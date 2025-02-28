@@ -20,3 +20,5 @@ actual_df = pd.DataFrame({
     "actual_capacity": test_dataset.y.numpy().flatten()
 })
 
+# TODO maybe change CrossBorderData to pd.Dataframe default -> convert to pytorch tensor in train.py file
+# TODO plot some first results
