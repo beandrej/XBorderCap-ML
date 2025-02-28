@@ -1,34 +1,28 @@
 import os
 import pandas as pd
-import matplotlib.pyplot as plt
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import config
 
 class CrossBorderData(Dataset):
 
     def __init__(self, train=True):
 
-        country1 = 'AUS'
-        country2 = 'SWI'
+        c1_codes = 'AUS'
+        c2_codes = 'SWI'
         domain = 'ntc'
         
-        border, start, end = self.read_target_variable(domain, country1, country2)
+        border, start, end = self.read_target_variable(domain, c1_codes, c2_codes)
 
-        aus = self.read_feature_data(country1, start, end)
-        swi = self.read_feature_data(country2, start, end)
+        country1 = self.read_feature_data(c1_codes, start, end)
+        country2 = self.read_feature_data(c2_codes, start, end)
         
-        # check for missing timestamps
-        border, aus = self.fix_missing_timestamps(border, aus)
+        border, country1 = self.fix_missing_timestamps(border, country1)
 
-        # put together country data & border  
-        train_df, test_df = self.put_together(swi, aus, border)
+        train_df, test_df = self.put_together(country1, country2, border)
 
-        self.data = train_df if train else test_df  # Load train or test set
-
-        # convert to tensors
-        self.X = torch.tensor(self.data.drop(columns=["cross_border_capacity"]).values, dtype=torch.float32)
-        self.y = torch.tensor(self.data["cross_border_capacity"].values, dtype=torch.float32).view(-1, 1)
+        self.data = train_df if train else test_df 
+        self.timestamp = self.data.index.astype(str).tolist()
 
     def __len__(self):
         return len(self.X)
@@ -36,6 +30,10 @@ class CrossBorderData(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
     
+    def to_tensor(self):
+        self.X = torch.tensor(self.data.drop(columns=["cross_border_capacity"]).values, dtype=torch.float32)
+        self.y = torch.tensor(self.data["cross_border_capacity"].values, dtype=torch.float32).view(-1, 1)
+
     def read_feature_data(self, country, start, stop):
     
         base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables')
@@ -115,8 +113,6 @@ class CrossBorderData(Dataset):
         print(self.data.info())
         print(self.data.head())
 
-
-
     def check_timestamps(self, df1, df2, mode='check'):
         print("DF1 Time Range:", df1.index.min(), "to", df1.index.max())
         print("DF2 Time Range:", df2.index.min(), "to", df2.index.max())  
@@ -184,26 +180,6 @@ class CrossBorderData(Dataset):
 
         return train_df, test_df
     
-
-# country1 = 'AUS'
-# country2 = 'SWI'
-# domain = 'ntc'
-
-# aus_swi, start, end = read_target_variable(domain, country1, country2)
-# aus = read_feature_data(country1, start, end)
-# swi = read_feature_data(country2, start, end)
-
-# check_timestamps(aus_swi, aus)
-# check_timestamps(aus_swi, swi)
-# aus_swi, aus = fix_missing_timestamps(aus_swi, aus)
-# check_timestamps(aus_swi, swi)
-# check_timestamps(aus_swi, aus)
-
-# train, test = put_together(swi, aus, aus_swi)
-
-# print_stats(train)
-# print_stats(test)
-
 
 
 
