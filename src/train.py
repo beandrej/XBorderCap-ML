@@ -12,21 +12,20 @@ from model import *
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-model_name = config.MODEL_NAME
+MODEL_NAME = config.MODEL_NAME
 
-
-train_dataset = CrossBorderData(train=True)
+train_dataset = CrossBorderData(config.C1, config.C2, config.DOMAIN, train=True)
 train_dataset.to_tensor()
 train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
 
 
 input_dim = next(iter(train_loader))[0].shape[1]
-model = LinReg(input_dim=input_dim).to(device)
+model = get_model(MODEL_NAME, input_dim).to(device)
 
 
 criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
-
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
 for epoch in range(config.EPOCHS):
     model.train()
@@ -34,10 +33,12 @@ for epoch in range(config.EPOCHS):
     progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config.EPOCHS}", leave=True)
     
     for X_batch, y_batch in train_loader:
-
         X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
         optimizer.zero_grad()
+
+        if MODEL_NAME == "lstm":
+            X_batch = X_batch.view(X_batch.shape[0], 1, X_batch.shape[1])
+
         predictions = model(X_batch)
         loss = criterion(predictions, y_batch)
         loss.backward()
@@ -46,9 +47,11 @@ for epoch in range(config.EPOCHS):
         progress_bar.set_postfix(loss=loss.item())
         progress_bar.update(1)
 
+    scheduler.step()
+
     if epoch % 2 == 0:
         print(f"Epoch {epoch+1}/{config.EPOCHS} - Avg Loss: {epoch_loss/len(train_loader):.6f}")
 
-torch_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../results/model_params', f"{model_name}.pth")
+torch_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../results/model_params', f"{MODEL_NAME}.pth")
 torch.save(model.state_dict(), torch_model_path)
 print(f"Model saved at: {torch_model_path}")

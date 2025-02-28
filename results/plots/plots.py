@@ -11,7 +11,7 @@ sys.path.append(src_path)
 from data_loader import CrossBorderData
 import config
 
-save_plot = False
+save_plot = True
 model_name = config.MODEL_NAME
 
 pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../predictions', f"{model_name}.csv")
@@ -21,7 +21,7 @@ predictions_df = pd.DataFrame({
     "predicted_capacity": predictions_df["predicted_capacity"]
 })
 
-test_dataset = CrossBorderData(train=False).data
+test_dataset = CrossBorderData(config.C1, config.C2, config.DOMAIN, train=False).data
 actual_df = pd.DataFrame({
     "timestamp": pd.to_datetime(test_dataset.index),
     "actual_capacity": test_dataset["cross_border_capacity"].to_numpy().flatten()

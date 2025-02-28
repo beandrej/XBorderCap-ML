@@ -7,35 +7,36 @@ from torch.utils.data import DataLoader
 from model import *
 import config
 
-model_name = config.MODEL_NAME
-model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../results/model_params', f"{model_name}.pth")
-pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../results/predictions', f"{model_name}.csv")
+MODEL_NAME = config.MODEL_NAME
+model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../results/model_params', f"{MODEL_NAME}.pth")
+pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../results/predictions', f"{MODEL_NAME}.csv")
 
-test_data = CrossBorderData(train=False)
+test_data = CrossBorderData(config.C1, config.C2, config.DOMAIN, train=False)
 test_tensor = test_data.to_tensor()
 test_loader = DataLoader(test_data, batch_size=1) 
 
-# Load trained model
 input_dim = next(iter(test_loader))[0].shape[1]
-model = LinReg(input_dim)
+model = get_model(MODEL_NAME, input_dim)
 model.load_state_dict(torch.load(model_path))
 model.eval()
 
-# Store predictions
 predictions = []
 timestamps = []
 
-# Predict with tqdm progress bar
+
 with torch.no_grad():
     progress_bar = tqdm(test_loader, desc="Making Predictions", leave=True)
     
     for X_batch, _ in progress_bar:
+
+        if MODEL_NAME == "lstm":
+            X_batch = X_batch.view(X_batch.shape[0], 1, X_batch.shape[1])
+
         pred = model(X_batch)
         predictions.append(pred.item())
-        # Update tqdm with current prediction
         progress_bar.set_postfix(current_pred=pred.item())
 
-# Save predictions to CSV
+
 pred_df = pd.DataFrame({
     "timestamp": pd.to_datetime(test_data.timestamp), 
     "predicted_capacity": predictions

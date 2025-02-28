@@ -6,22 +6,24 @@ import config
 
 class CrossBorderData(Dataset):
 
-    def __init__(self, train=True):
-
-        c1_codes = 'AUS'
-        c2_codes = 'SWI'
-        domain = 'ntc'
+    def __init__(self, c1, c2, domain, train=True):
         
-        border, start, end = self.read_target_variable(domain, c1_codes, c2_codes)
-
-        country1 = self.read_feature_data(c1_codes, start, end)
-        country2 = self.read_feature_data(c2_codes, start, end)
+        border, start, end = self.read_target_variable(domain, c1, c2)
+        c1_data = self.read_feature_data(c1, start, end)
+        c2_data = self.read_feature_data(c2, start, end)
         
-        border, country1 = self.fix_missing_timestamps(border, country1)
+        border, c1_data = self.fix_missing_timestamps(border, c1_data)
 
-        train_df, test_df = self.put_together(country1, country2, border)
-
+        train_df, test_df = self.put_together(c1_data, c2_data, border)
         self.data = train_df if train else test_df 
+
+        self.data["hour"] = self.data.index.hour
+        self.data["dayofweek"] = self.data.index.dayofweek  # Monday=0, Sunday=6
+        self.data["month"] = self.data.index.month  # 1-12
+        self.data["dayofyear"] = self.data.index.dayofyear  # 1-365
+        self.data["weekofyear"] = self.data.index.isocalendar().week.astype(int)  # 1-52
+        self.data["is_weekend"] = (self.data.index.dayofweek >= 5).astype(int) 
+
         self.timestamp = self.data.index.astype(str).tolist()
 
     def __len__(self):
@@ -152,7 +154,6 @@ class CrossBorderData(Dataset):
             print("Nothing to fix :)")
             return df1, df2  
 
-        # **Fix Missing Timestamps**
         if problematic_df1 is not None:
             print("fixing missing timestamps in df1...")
             df1 = self.fix_missing_timestamps(df1, df2)
