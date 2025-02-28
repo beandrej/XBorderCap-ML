@@ -1,40 +1,48 @@
 import pandas as pd
 import torch
-#from pycaret.regression import *
-from model import LinReg
-
-from data_loader import CrossBorderData
+import os
+from tqdm import tqdm
+import torch.nn as nn
+import torch.optim as optim
 from torch.utils.data import DataLoader
 
-# Load training data
+#from pycaret.regression import *
+from model import LinReg
+import config
+from data_loader import CrossBorderData
+
+model_name = "linreg"
+batch_size = config.BATCH_SIZE
+
 train_dataset = CrossBorderData(train=True)
-test_dataset = CrossBorderData(train=False)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
 
-train_dataset.print_stats()
-test_dataset.print_stats()
+input_dim = next(iter(train_loader))[0].shape[1]
+model =  LinReg(input_dim=input_dim)
 
-print(f"Train size: {len(train_dataset)}, Test size: {len(test_dataset)}, Total length: {len(test_dataset) + len(train_dataset)}")
+criterion = nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
+epochs = config.EPOCHS
 
+for epoch in range(epochs):
+    epoch_loss = 0  # Track total loss for the epoch
+    progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", leave=True)
+    for X_batch, y_batch in train_loader:
+        optimizer.zero_grad()
+        predictions = model(X_batch)
+        loss = criterion(predictions, y_batch)
+        loss.backward()
+        optimizer.step()
 
+        epoch_loss += loss.item()
+        
+        # Update tqdm progress bar description with loss info
+        progress_bar.set_postfix(loss=loss.item())
 
+    if epoch % 10 == 0:
+        print(f"Epoch {epoch+1}/{epochs} - Avg Loss: {epoch_loss/len(train_loader):.6f}")
 
-# TODO test_set + 1, since last entry and first entry of train & test are same
-
-
-
-
-
-
-
-# # Load preprocessed data
-# data = pd.read_csv("processed_data.csv")  # Ensure your preprocessed file exists
-# target_column = "cross_border_capacity"  # Define your target variable
-
-# # Initialize PyCaret for regression
-# s = setup(data, target=target_column, session_id=123, normalize=True)
-
-# # Compare models
-# best_model = compare_models()
-
-# # Print best model
-# print(best_model)
+# Save trained model
+path = path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../results/torch_models', f"{model_name}.pth")
+torch.save(model.state_dict(), path)
+print("Model training complete. Saved model.")  
