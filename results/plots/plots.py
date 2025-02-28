@@ -11,7 +11,7 @@ sys.path.append(src_path)
 from data_loader import CrossBorderData
 import config
 
-save_plot = True
+save_plot = False
 model_name = config.MODEL_NAME
 
 pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../predictions', f"{model_name}.csv")
