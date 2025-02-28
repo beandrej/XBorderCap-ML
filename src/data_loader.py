@@ -178,6 +178,7 @@ class CrossBorderData(Dataset):
         split_timestamp = sorted_timestamps[split_index]
 
         train_df = df_combined.loc[:split_timestamp]
+        train_df = train_df.tail(-1)
         test_df = df_combined.loc[split_timestamp:]
 
 
