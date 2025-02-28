@@ -1,48 +1,54 @@
-import pandas as pd
 import torch
 import os
-from tqdm import tqdm
+from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
-
-#from pycaret.regression import *
-from model import LinReg
+from tqdm import tqdm
 import config
 from data_loader import CrossBorderData
+from model import *
 
-model_name = "linreg"
-batch_size = config.BATCH_SIZE
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+model_name = config.MODEL_NAME
+
 
 train_dataset = CrossBorderData(train=True)
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
+train_dataset.to_tensor()
+train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
+
 
 input_dim = next(iter(train_loader))[0].shape[1]
-model =  LinReg(input_dim=input_dim)
+model = LinReg(input_dim=input_dim).to(device)
+
 
 criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
-epochs = config.EPOCHS
 
-for epoch in range(epochs):
-    epoch_loss = 0  # Track total loss for the epoch
-    progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", leave=True)
+
+for epoch in range(config.EPOCHS):
+    model.train()
+    epoch_loss = 0  
+    progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config.EPOCHS}", leave=True)
+    
     for X_batch, y_batch in train_loader:
+
+        X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+
         optimizer.zero_grad()
         predictions = model(X_batch)
         loss = criterion(predictions, y_batch)
         loss.backward()
         optimizer.step()
-
         epoch_loss += loss.item()
-        
-        # Update tqdm progress bar description with loss info
         progress_bar.set_postfix(loss=loss.item())
+        progress_bar.update(1)
 
-    if epoch % 10 == 0:
-        print(f"Epoch {epoch+1}/{epochs} - Avg Loss: {epoch_loss/len(train_loader):.6f}")
+    if epoch % 2 == 0:
+        print(f"Epoch {epoch+1}/{config.EPOCHS} - Avg Loss: {epoch_loss/len(train_loader):.6f}")
 
-# Save trained model
-path = path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../results/torch_models', f"{model_name}.pth")
-torch.save(model.state_dict(), path)
-print("Model training complete. Saved model.")  
+torch_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../results/model_params', f"{model_name}.pth")
+torch.save(model.state_dict(), torch_model_path)
+print(f"Model saved at: {torch_model_path}")
