@@ -1,187 +1,49 @@
-import os
+import matplotlib.pyplot as plt
 import pandas as pd
-import torch
-from torch.utils.data import Dataset
-import config
+from data_class import CrossBorderData
 
-class CrossBorderData(Dataset):
+DATASET_NAME = 'AUS_BEL'
 
-    def __init__(self, c1, c2, domain, train=True):
-        
-        border, start, end = self.read_target_variable(domain, c1, c2)
-        c1_data = self.read_feature_data(c1, start, end)
-        c2_data = self.read_feature_data(c2, start, end)
-        
-        border, c1_data = self.fix_missing_timestamps(border, c1_data)
+def main():
 
-        train_df, test_df = self.put_together(c1_data, c2_data, border)
-        self.data = train_df if train else test_df 
-
-        self.data["hour"] = self.data.index.hour
-        self.data["dayofweek"] = self.data.index.dayofweek  # Monday=0, Sunday=6
-        self.data["month"] = self.data.index.month  # 1-12
-        self.data["dayofyear"] = self.data.index.dayofyear  # 1-365
-        self.data["weekofyear"] = self.data.index.isocalendar().week.astype(int)  # 1-52
-        self.data["is_weekend"] = (self.data.index.dayofweek >= 5).astype(int) 
-
-        self.timestamp = self.data.index.astype(str).tolist()
-
-    def __len__(self):
-        return len(self.X)
+    test = CrossBorderData("AUS", "BEL", "max_bex", DATASET_NAME, load_from_file=False, convert_to_tensor=True)
     
-    def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
-    
-    def to_tensor(self):
-        self.X = torch.tensor(self.data.drop(columns=["cross_border_capacity"]).values, dtype=torch.float32)
-        self.y = torch.tensor(self.data["cross_border_capacity"].values, dtype=torch.float32).view(-1, 1)
+    # print("\n📊 Available Features:")
+    # print(test.feature_columns[:10])  # Print first 10 columns for reference
 
-    def read_feature_data(self, country, start, stop):
-    
-        base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables')
-        data = {}
+    # Example: Plot multiple valid feature columns
+    # plot_multiple_columns(test, [
+    #     "BEL_generation_hydro_pumped_storage", 
+    #     "AUS_generation_geothermal"
+    # ], start_date="2016-01-01", end_date="2024-01-01")  # Wider time range
 
-        # Read all CSV files from a single country into one DF
-        for root, dirs, files in os.walk(base_path):
-            for file in files:
-                if file == f'{country}.csv':
-                    file_path = os.path.join(root, file)
-                    df = pd.read_csv(file_path, parse_dates=True, index_col=0, date_format='%Y-%m-%d %H:%M:%S')
-                    feature_type = os.path.basename(root)
-                    data[feature_type] = df
+def plot_multiple_columns(dataset, columns, start_date=None, end_date=None):
 
+    df = pd.DataFrame(dataset.X.numpy(), columns=dataset.feature_columns)
+    df["cross_border_capacity"] = dataset.y.numpy().flatten()
+    df.index = pd.to_datetime(dataset.timestamp)
 
-        combined_df = pd.concat(data.values(), axis=1)
-        combined_df = self.cleaned_feature_data(combined_df, start, stop)
-        combined_df = self.add_installed_cap(combined_df, country)
-        combined_df = combined_df.add_prefix(f"{country}_")
+    df = df.sort_index()
 
-        return combined_df
-    
-    def add_installed_cap(self, hourly_df, country):
-        
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables/entsoe/installed_capacity', f"{country}_installed_generation_capacity.csv")
-        
-        df = pd.read_csv(path, index_col=1)
-        df = df.drop(columns=[df.columns[0]])
-        df.index = pd.to_datetime(df.index) 
-        df['year'] = df.index.year
-        df = df.set_index('year')
+    available_cols = [col for col in columns if col in df.columns]
+    if not available_cols:
+        return
+    plot_data = df[available_cols].copy()
 
-        hourly_df['year'] = hourly_df.index.year
-        merged_df = hourly_df.merge(df, on='year', how='left')
-        merged_df = merged_df.set_index(hourly_df.index)
-        merged_df = merged_df.drop(columns=['year'])
+    if start_date and end_date:
+        plot_data = plot_data.loc[start_date:end_date]
+    plt.figure(figsize=(12, 6))
 
-        return merged_df
-    
-    def cleaned_feature_data(self, df, start, stop, mode='cut'):
+    for col in available_cols:
+        plt.plot(plot_data.index, plot_data[col], label=col)
 
-        start = pd.to_datetime(start)
-        stop = pd.to_datetime(stop)
-        df.index = pd.to_datetime(df.index)
-
-        og_start, og_stop = df.index.min(), df.index.max()
-
-        df = df.dropna(thresh=50, axis=1)
-        if mode == 'cut':
-            df = df.loc[start:stop]
-        df = df.interpolate(method='linear', limit_direction='both')
-
-        return df
-
-    def read_target_variable(self, domain, country1, country2):
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/02_target_variables', f"{domain}", f"{country1}" '_to_' f"{country2}.csv")
-        df = pd.read_csv(path, index_col=1)    
-        df = df.drop(columns=[df.columns[0]]) 
-        df.index = pd.to_datetime(df.index)
-        df.columns = ["cross_border_capacity"]
-        start, stop = df.index.min(), df.index.max()
-
-        return df, start, stop
-    
-    def fix_missing_timestamps(self, problematic_df, correct_df):
-        full_index = correct_df.index
-        problematic_df = problematic_df.reindex(full_index)
-        problematic_df = problematic_df.interpolate(method='linear', limit_direction='both')
-        print("Fixed missing timestamps and interpolated values!")
-
-        return problematic_df, correct_df
-
-    def print_stats(self):
-
-        print("Starting Timestamp:", f"{self.data.index.min()}")
-        print("Ending Timestamp:", f"{self.data.index.max()}")
-        print(self.data.info())
-        print(self.data.head())
-
-    def check_timestamps(self, df1, df2, mode='check'):
-        print("DF1 Time Range:", df1.index.min(), "to", df1.index.max())
-        print("DF2 Time Range:", df2.index.min(), "to", df2.index.max())  
-        print("DF1 Entries:", len(df1))
-        print("DF2 Entries:", len(df2))
-
-        hole1 = df1.index.difference(df2.index)
-        hole2 = df2.index.difference(df1.index)
-        dups1 = df1.index[df1.index.duplicated()]
-        dups2 = df2.index[df2.index.duplicated()]
-
-        problematic_df1 = None
-        problematic_df2 = None
-
-        if not hole1.empty:
-            print("timestamps NOT IN df2 are TOTAL", len(hole1))
-            problematic_df2 = df2    
-
-        if not hole2.empty:
-            print("timestamps NOT IN df1 are TOTAL", len(hole2))
-            problematic_df1 = df1
-
-        if not dups1.empty:
-            print("duplicate timestamps in df1:", dups1.tolist())
-            problematic_df1 = df1
-
-        if not dups2.empty:
-            print("duplicate timestamps in df2:", dups2.tolist())
-            problematic_df2 = df2
-
-        
-        if problematic_df1 is not None and problematic_df2 is not None:
-            print("both dfs corrupted -> special case TODO")
-            raise ValueError("TODO")
-
-        elif problematic_df1 is None and problematic_df2 is None:
-            print("Nothing to fix :)")
-            return df1, df2  
-
-        if problematic_df1 is not None:
-            print("fixing missing timestamps in df1...")
-            df1 = self.fix_missing_timestamps(df1, df2)
-
-        if problematic_df2 is not None:
-            print("fixing missing timestamps in df2...")
-            df2 = self.fix_missing_timestamps(df2, df1)
-
-        return df1, df2  
-    
-    def put_together(self, df1, df2, df3):
-        assert len(df1) == len(df2) == len(df3)
-
-        df_combined = df1.merge(df2, on="timestamp", how="outer")
-        df_combined = df_combined.merge(df3, on="timestamp", how="outer")
-
-        split_index = int(len(df_combined) * config.TRAIN_SPLIT)
-        sorted_timestamps = df_combined.index.sort_values()
-        split_timestamp = sorted_timestamps[split_index]
-
-        train_df = df_combined.loc[:split_timestamp]
-        train_df = train_df.tail(-1)
-        test_df = df_combined.loc[split_timestamp:]
+    plt.xlabel("Timestamp")
+    plt.ylabel("Value")
+    plt.title("Comparison of Selected Features")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
 
-        return train_df, test_df
-    
-
-
-
-
+if __name__ == "__main__":
+    main()

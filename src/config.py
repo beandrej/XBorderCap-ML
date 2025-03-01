@@ -1,11 +1,4 @@
 
-
-# DATA LOADER
-C1 = 'AUS'
-C2 = 'SWI'
-DOMAIN = 'max_bex'
-
-
 # MODEL
 VALID_MODELS = ['linreg',   # 0
                 'nn',       # 1
