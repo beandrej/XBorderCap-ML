@@ -4,14 +4,14 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from data_class import CrossBorderData
-from data_loader import DATASET_NAME
+import data_loader
 import config
 
 save_plot = True
 model_name = config.MODEL_NAME
 
-pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions', f"{model_name}_max_bex.csv")
-fig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/plots', f"{model_name}.png")
+pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions', f"{model_name}_{data_loader.DATASET_NAME}_{data_loader.DOMAIN}.csv")
+fig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/plots/pred', f"{model_name}_{data_loader.DATASET_NAME}_{data_loader.DOMAIN}.png")
 
 predictions_df = pd.read_csv(pred_path)
 predictions_df = pd.DataFrame({
@@ -19,7 +19,7 @@ predictions_df = pd.DataFrame({
     "predicted_capacity": predictions_df["predicted_capacity"]
 })
 
-test_dataset = CrossBorderData("AUS", "SWI", "ntc", DATASET_NAME, load_from_file=True, convert_to_tensor=False)
+test_dataset = CrossBorderData(data_loader.COUNTRY1, data_loader.COUNTRY2, data_loader.DOMAIN, data_loader.DATASET_NAME, load_from_file=True)
 actual_df = pd.DataFrame({
     "timestamp": pd.to_datetime(test_dataset.timestamp),
     "actual_capacity": test_dataset.y.flatten()
@@ -29,7 +29,7 @@ comparison_df = actual_df.merge(predictions_df, on="timestamp")
 
 print(actual_df.head())
 print(predictions_df.head())
-
+print(comparison_df.head())
 
 plt.figure(figsize=(12, 6))
 plt.plot(comparison_df["timestamp"], comparison_df["actual_capacity"], label="Actual Capacity", color="blue")

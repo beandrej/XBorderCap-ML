@@ -6,9 +6,10 @@ from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 import config
 from data_class import CrossBorderData
-from data_loader import *
+import data_loader
 from model import *
-
+from sklearn.decomposition import PCA
+from sklearn.kernel_ridge import KernelRidge
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -16,7 +17,7 @@ print(f"Using device: {device}")
 MODEL_NAME = config.MODEL_NAME
 SPLIT_RATIO = config.TRAIN_SPLIT
 
-full_df = CrossBorderData("AUS", "BEL", "max_bex", DATASET_NAME, load_from_file=True)
+full_df = CrossBorderData(data_loader.COUNTRY1, data_loader.COUNTRY2, data_loader.DOMAIN, data_loader.DATASET_NAME, load_from_file=True)
 split_index = int(len(full_df) * SPLIT_RATIO)
 
 train_df = Subset(full_df, range(0, split_index))
@@ -26,7 +27,8 @@ input_dim = next(iter(train_loader))[0].shape[1]
 model = get_model(MODEL_NAME, input_dim).to(device)
 
 criterion = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
+
+optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
 for epoch in range(config.EPOCHS):

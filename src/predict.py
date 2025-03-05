@@ -6,15 +6,15 @@ from data_loader import CrossBorderData
 from torch.utils.data import DataLoader, Subset
 from model import *
 import config
-from data_loader import DATASET_NAME
+import data_loader
 
 MODEL_NAME = config.MODEL_NAME
 SPLIT_RATIO = config.TRAIN_SPLIT
 
 model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_params', f"{MODEL_NAME}.pth")
-pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions', f"{MODEL_NAME}_max_bex.csv")
+pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions', f"{MODEL_NAME}_{data_loader.DATASET_NAME}_{data_loader.DOMAIN}.csv")
 
-full_df = CrossBorderData("AUS", "BEL", "max_bex", DATASET_NAME, load_from_file=True)
+full_df = CrossBorderData(data_loader.COUNTRY1, data_loader.COUNTRY2, data_loader.DOMAIN, data_loader.DATASET_NAME, load_from_file=True)
 split_index = int(len(full_df) * SPLIT_RATIO)
 
 test_df = Subset(full_df, range(split_index, len(full_df)))
@@ -26,7 +26,8 @@ test_timestamps = [str(ts) for ts in test_timestamps]
 
 input_dim = next(iter(test_loader))[0].shape[1]
 model = get_model(MODEL_NAME, input_dim)
-model.load_state_dict(torch.load(model_path))
+print(f"\nLoading model: {MODEL_NAME}\n")
+model.load_state_dict(torch.load(model_path, weights_only=True))
 model.eval()
 
 predictions = []

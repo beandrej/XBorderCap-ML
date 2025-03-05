@@ -5,6 +5,15 @@ import config
 class LinReg(nn.Module):
     def __init__(self, input_dim):
         super(LinReg, self).__init__()
+        self.weight = nn.Parameter(torch.randn(input_dim, 1))
+        self.bias = nn.Parameter(torch.randn(1))
+
+    def forward(self, x):
+        return x @ self.weight + self.bias
+
+class Reg(nn.Module):
+    def __init__(self, input_dim):
+        super(Reg, self).__init__()
         self.linear = nn.Linear(input_dim, 1)
 
     def forward(self, x):
@@ -13,21 +22,30 @@ class LinReg(nn.Module):
 class Net(nn.Module):
     def __init__(self, input_dim):
         super().__init__()
-        self.fc1 = nn.Linear(input_dim, 128)
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 1)
-        self.dropout = nn.Dropout(p=0.3) 
-        self.batch_norm = nn.BatchNorm1d(input_dim)
+        self.fc1 = nn.Linear(input_dim, 256)
+        self.batch_norm1 = nn.BatchNorm1d(256)
+        self.dropout = nn.Dropout(p=config.DROPOUT_NN)
+        
+        self.fc2 = nn.Linear(256, 128)
+        self.batch_norm2 = nn.BatchNorm1d(128)
+        
+        self.fc3 = nn.Linear(128, 64)
+        self.fc4 = nn.Linear(64, 1) 
 
     def forward(self, x):
-        x = self.batch_norm(x)
         x = torch.relu(self.fc1(x))
+        x = self.batch_norm1(x)
         x = self.dropout(x)
+        
         x = torch.relu(self.fc2(x))
-        return torch.relu(self.fc3(x)) 
+        x = self.batch_norm2(x)
+        
+        x = torch.relu(self.fc3(x))
+        return torch.relu(self.fc4(x))
+
 
 class LSTM(nn.Module):
-    def __init__(self, input_dim, hidden_dim=config.HIDDEN_DIM, num_layers=config.NUM_LAYERS, dropout=config.DROPOUT):
+    def __init__(self, input_dim, hidden_dim=config.HIDDEN_DIM, num_layers=config.NUM_LAYERS, dropout=config.DROPOUT_LSTM):
         super(LSTM, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
@@ -49,8 +67,11 @@ class LSTM(nn.Module):
         return out
 
 def get_model(model_name, input_dim):
+    print(f"\nUsing model: {model_name}")
     if model_name == "linreg":
         return LinReg(input_dim)
+    elif model_name == "reg":
+        return Reg(input_dim)
     elif model_name == "nn":
         return Net(input_dim)
     elif model_name == "lstm":
