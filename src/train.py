@@ -2,10 +2,11 @@ import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import TensorDataset, DataLoader
+from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 import config
-from data_class import CrossBorderData
+from data_class import *
 import data_loader
 from model import *
 from sklearn.decomposition import PCA
@@ -17,17 +18,34 @@ print(f"Using device: {device}")
 MODEL_NAME = config.MODEL_NAME
 SPLIT_RATIO = config.TRAIN_SPLIT
 
-full_df = CrossBorderData(data_loader.COUNTRY1, data_loader.COUNTRY2, data_loader.DOMAIN, data_loader.DATASET_NAME, load_from_file=True)
-split_index = int(len(full_df) * SPLIT_RATIO)
+full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAX_BEX_WITH_FEATURES.csv"), index_col=0)
+first_target_idx = full_df.columns.get_loc("AUS_BEL")
 
-train_df = Subset(full_df, range(0, split_index))
-train_loader = DataLoader(train_df, batch_size=config.BATCH_SIZE, shuffle=False)
+X = full_df.iloc[:, :first_target_idx]
+Y = full_df.iloc[:, first_target_idx:]
+
+split_index = int(len(full_df) * SPLIT_RATIO)
+X_train = X.iloc[:split_index]
+Y_train = Y.iloc[:split_index]
+
+print("Shape of X_train:", X_train.shape) 
+print("Shape of Y_train:", Y_train.shape) 
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+
+
+X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+Y_train_tensor = torch.tensor(Y_train.values, dtype=torch.float32)
+
+train_dataset = TensorDataset(X_train_tensor, Y_train_tensor)
+train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
 
 input_dim = next(iter(train_loader))[0].shape[1]
-model = get_model(MODEL_NAME, input_dim).to(device)
+output_dim = Y_train.shape[1]
+model = get_model(MODEL_NAME, input_dim, output_dim).to(device)
 
 criterion = nn.MSELoss()
-
 optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
@@ -36,7 +54,7 @@ for epoch in range(config.EPOCHS):
     epoch_loss = 0  
     progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config.EPOCHS}", leave=True)
     
-    for X_batch, y_batch, _ in train_loader:
+    for X_batch, y_batch in train_loader:
         X_batch, y_batch = X_batch.to(device), y_batch.to(device)
         optimizer.zero_grad()
 

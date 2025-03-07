@@ -23,16 +23,24 @@ enable_plot = False
 def main():
 
 
-    df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAX_BEX_WITH_FEATURES.csv"), index_col=0)
-    print(df.nunique())
-    print(df.nunique()[df.nunique() < 5])
-    print("TOTAL NaN")
-    print(df.isna().sum().sum())
+    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAX_BEX_WITH_FEATURES.csv"), index_col=0)
+    # print(df.nunique())
+    # print(df.nunique()[df.nunique() < 5])
+    # print("TOTAL NaN")
+    # print(df.isna().sum().sum())
 
-    plt.figure(figsize=(15, 14))
-    sns.heatmap(df.corr(), annot=False, cmap="coolwarm", fmt=".2f", vmin=-1, vmax=1)
-    plt.title("Feature Correlation Heatmap")
-    plt.show()
+    df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC_WITH_FEATURES.csv"), index_col=0)
+
+    X = df.iloc[:, :325]
+    y = df.iloc[:, 325:]
+    print(y.info())
+
+
+
+    # plt.figure(figsize=(15, 14))
+    # sns.heatmap(df.corr(), annot=False, cmap="coolwarm", fmt=".2f", vmin=-1, vmax=1)
+    # plt.title("Feature Correlation Heatmap")
+    # plt.show()
 
 
     if enable_plot:

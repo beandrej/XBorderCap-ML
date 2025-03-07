@@ -3,46 +3,65 @@ import torch.nn as nn
 import config
 
 class LinReg(nn.Module):
-    def __init__(self, input_dim):
+    def __init__(self, input_dim, output_dim):
         super(LinReg, self).__init__()
-        self.weight = nn.Parameter(torch.randn(input_dim, 1))
-        self.bias = nn.Parameter(torch.randn(1))
+        self.weight = nn.Parameter(torch.randn(input_dim, output_dim))
+        self.bias = nn.Parameter(torch.randn(output_dim))
 
     def forward(self, x):
         return x @ self.weight + self.bias
 
 class Reg(nn.Module):
-    def __init__(self, input_dim):
+    def __init__(self, input_dim, output_dim):
         super(Reg, self).__init__()
-        self.linear = nn.Linear(input_dim, 1)
+        self.linear = nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
         return self.linear(x)
-
+    
 class Net(nn.Module):
-    def __init__(self, input_dim):
+    def __init__(self, input_dim, output_dim):
         super().__init__()
-        self.fc1 = nn.Linear(input_dim, 256)
-        self.batch_norm1 = nn.BatchNorm1d(256)
-        self.dropout = nn.Dropout(p=config.DROPOUT_NN)
-        
-        self.fc2 = nn.Linear(256, 128)
-        self.batch_norm2 = nn.BatchNorm1d(128)
-        
-        self.fc3 = nn.Linear(128, 64)
-        self.fc4 = nn.Linear(64, 1) 
+
+        self.fc1 = nn.Linear(input_dim, 4096)
+        self.batch_norm1 = nn.BatchNorm1d(4096)
+        self.dropout1 = nn.Dropout(p=config.DROPOUT_NN)
+
+        self.fc2 = nn.Linear(4096, 1024)
+        self.batch_norm2 = nn.BatchNorm1d(1024)
+        self.dropout2 = nn.Dropout(p=config.DROPOUT_NN)
+
+        self.fc3 = nn.Linear(1024, 256)
+        self.batch_norm3 = nn.BatchNorm1d(256)
+        self.dropout3 = nn.Dropout(p=config.DROPOUT_NN)
+
+        self.fc4 = nn.Linear(256, 128)
+        self.batch_norm4 = nn.BatchNorm1d(128)
+        self.dropout4 = nn.Dropout(p=config.DROPOUT_NN)
+
+        self.fc5 = nn.Linear(128, 64)
+        self.fc6 = nn.Linear(64, output_dim)
 
     def forward(self, x):
-        x = torch.relu(self.fc1(x))
+        x = torch.nn.functional.leaky_relu(self.fc1(x), negative_slope=0.01)
         x = self.batch_norm1(x)
-        x = self.dropout(x)
-        
-        x = torch.relu(self.fc2(x))
-        x = self.batch_norm2(x)
-        
-        x = torch.relu(self.fc3(x))
-        return torch.relu(self.fc4(x))
+        x = self.dropout1(x)
 
+        x = torch.nn.functional.elu(self.fc2(x), alpha=1.0)
+        x = self.batch_norm2(x)
+        x = self.dropout2(x)
+
+        x = torch.nn.functional.softplus(self.fc3(x))
+        x = self.batch_norm3(x)
+        x = self.dropout3(x)
+
+        x = torch.nn.functional.elu(self.fc4(x), alpha=1.0)
+        x = self.batch_norm4(x)
+        x = self.dropout4(x)
+
+        x = self.fc5(x)
+        x = self.fc6(x)
+        return x
 
 class LSTM(nn.Module):
     def __init__(self, input_dim, hidden_dim=config.HIDDEN_DIM, num_layers=config.NUM_LAYERS, dropout=config.DROPOUT_LSTM):
@@ -66,15 +85,15 @@ class LSTM(nn.Module):
         out = self.fc(out[:, -1, :])
         return out
 
-def get_model(model_name, input_dim):
+def get_model(model_name, input_dim, output_dim):
     print(f"\nUsing model: {model_name}")
     if model_name == "linreg":
-        return LinReg(input_dim)
+        return LinReg(input_dim, output_dim)
     elif model_name == "reg":
-        return Reg(input_dim)
+        return Reg(input_dim, output_dim)
     elif model_name == "nn":
-        return Net(input_dim)
+        return Net(input_dim, output_dim)
     elif model_name == "lstm":
-        return LSTM(input_dim)
+        return LSTM(input_dim, output_dim)
     else:
         raise ValueError(f"Unknown model: {model_name}")

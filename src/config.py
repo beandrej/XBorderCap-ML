@@ -2,9 +2,9 @@
 
 
 # -------  MODELING PARAMETERS ---------
-MODEL_TYPE = 0
+MODEL_TYPE = 2
 VALID_MODELS = ['linreg',
-                'reg'  
+                'reg',  
                 'nn',       
                 'lstm']     
 MODEL_NAME = VALID_MODELS[MODEL_TYPE]
@@ -14,14 +14,14 @@ HIDDEN_DIM = 128
 NUM_LAYERS = 3  
 DROPOUT_LSTM = 0.3  
 # NN
-DROPOUT_NN = 0.3
+DROPOUT_NN = 0.2
 
 
 # -------  TRAINING PARAMETERS ---------
 
 TRAIN_SPLIT = 0.8 
-BATCH_SIZE = 128  
-EPOCHS = 75
-WEIGHT_DECAY = 1e-4
-LEARNING_RATE = 0.005
+BATCH_SIZE = 512
+EPOCHS = 50
+WEIGHT_DECAY = 1e-5
+LEARNING_RATE = 0.001
 
