@@ -10,8 +10,6 @@ import config
 from sklearn.impute import KNNImputer
 from sklearn.ensemble import RandomForestRegressor
 
-# TODO rewrite read_target_variable() and read_feature_data() to iterate through a list of countries
-# TODO write TargetData class to load set of target vars
 
 class BaseData(Dataset):
     def __init__(self, df_name):
@@ -43,7 +41,6 @@ class BaseData(Dataset):
         df = pd.read_csv(self.path, index_col=0, parse_dates=True)
         df.index = pd.to_datetime(df.index, errors='raise')
         self.data = df
-
         total_nans = df.isna().sum().sum()
         print(f"Total NaNs in dataset: {total_nans}")
         print(f"Data successfully loaded! Shape: {df.shape}")
@@ -70,15 +67,16 @@ class BaseData(Dataset):
         self.data["weekofyear"] = self.data.index.isocalendar().week.astype(int)  # 1-52
         self.data["is_weekend"] = (self.data.index.dayofweek >= 5).astype(int) 
     
-    def dropSparse(self, nan_threshold=0.5, zero_threshold=0.1):
+    def dropSparse(self, nan_threshold=0.5, zero_threshold=0.5):
         sparse_columns = self.data.columns[self.data.isna().mean() > nan_threshold]
         zero_columns = self.data.columns[(self.data == 0).mean() > zero_threshold]
+
         columns_to_drop = sparse_columns.union(zero_columns)
         self.data.drop(columns=columns_to_drop, inplace=True)
 
         if len(columns_to_drop) > 0:
             print(f"Dropping {len(sparse_columns)} sparse columns and {len(zero_columns)} zero-columns")
-            print(f"Dropped Columns: {list(columns_to_drop)}")
+            #print(f"Dropped Columns: {list(columns_to_drop).sum()}")
 
     def dropEX(self):
         ex_columns = [col for col in self.data.columns if col.startswith("EX_")]
@@ -89,7 +87,7 @@ class BaseData(Dataset):
         else:
             print("No 'EX_' columns found to drop.")
 
-class CrossBorderData(BaseData):
+class CompareData(BaseData):
     def __init__(self, c1, c2, domain, df_name, loadCSV=True):
         self.name = df_name
         self.path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{self.name}.csv")
@@ -178,7 +176,8 @@ class TypeData(BaseData):
         if loadCSV and os.path.exists(self.path):
             self.loadCSV()
         else:
-            self.data = self.merge_all()
+            # self.data = self.merge_all()
+            self.data = self.agg_gen()
             self.dropSparse()
             self.dropEX()
             self.cutDataset()
@@ -218,6 +217,68 @@ class TypeData(BaseData):
         nordic_data = [col for col in self.data.columns if col.startswith(tuple(nordics))]
         print(f"\nRemoving {len(nordic_data)} Nordic country columns from ENTSO-E dataset\n")
         self.data.drop(columns=nordic_data, inplace=True)
+
+    def agg_gen(self):
+
+        base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables', self.source, self.type)
+        merged_df = pd.DataFrame()
+        for file in os.listdir(base_path):
+            if file.endswith(".csv"):
+                file_path = os.path.join(base_path, file)
+                country = file.replace(".csv", "")
+                df = pd.read_csv(file_path, index_col=0, parse_dates=True)
+                df.index = pd.to_datetime(df.index).tz_localize(None)
+                self.data = df
+
+                #self.dropSparse()
+                grouped_data = {
+                    f"{country}_INFLEX": 0,
+                    f"{country}_FLEX": 0,
+                    f"{country}_NUC": 0,
+                    f"{country}_WATER": 0,
+                    f"{country}_OTHER": 0
+                }
+
+                for col in df.columns:
+                    if col.startswith("generation_"):
+                        category = "_".join(col.split("_")[1:]) 
+
+                        if category.startswith("wind") or category == "solar" or category.startswith("hydro_run"):
+                            grouped_data[f"{country}_INFLEX"] += df[col].fillna(0)
+
+                        elif category.startswith("hydro"):
+                            grouped_data[f"{country}_WATER"] += df[col].fillna(0)
+
+                        elif category.startswith("fossil") or category in ["hydro_water_reservoir", "hydro_pumped_storage"]:
+                            grouped_data[f"{country}_FLEX"] += df[col].fillna(0)
+
+                        elif category == "nuclear":
+                            grouped_data[f"{country}_NUC"] += df[col].fillna(0)
+
+                        else:
+                            grouped_data[f"{country}_OTHER"] += df[col].fillna(0) 
+
+                country_df = pd.DataFrame(grouped_data, index=df.index)
+                country_df[f"{country}_TOT_GEN"] = (
+                    country_df[f"{country}_INFLEX"] +
+                    country_df[f"{country}_FLEX"] +
+                    country_df[f"{country}_NUC"] +
+                    country_df[f"{country}_WATER"] +
+                    country_df[f"{country}_OTHER"]
+                )
+
+                if merged_df is None:
+                    merged_df = country_df 
+                else:
+                    merged_df = merged_df.merge(country_df, left_index=True, right_index=True, how="outer")  
+        return merged_df
+
+    def residual_demand(self):
+        base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables', self.source, self.type)
+        merged_df = pd.DataFrame()    
+
+
+
 
 class TargetData(BaseData):
     def __init__(self, domain, df_name, loadCSV=True, saveCSV=False):
@@ -270,17 +331,7 @@ class TargetData(BaseData):
         merged_df = pd.concat(data, axis=1, join="outer")
         return merged_df
 
-# class DataLoader(BaseData):
-#     def __init__(self, df_name):
-#         self.name = df_name
-#         self.path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{self.name}.csv")
 
-#         if os.path.exists(self.path):
-#             self.loadCSV()
-#         else:
-#             raise ValueError("Dataset not existing")
-
-        
 
 
 

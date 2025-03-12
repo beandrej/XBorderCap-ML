@@ -18,7 +18,7 @@ print(f"Using device: {device}")
 MODEL_NAME = config.MODEL_NAME
 SPLIT_RATIO = config.TRAIN_SPLIT
 
-full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAX_BEX_WITH_FEATURES.csv"), index_col=0)
+full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "ALL_NTC.csv"), index_col=0)
 first_target_idx = full_df.columns.get_loc("AUS_BEL")
 
 X = full_df.iloc[:, :first_target_idx]
