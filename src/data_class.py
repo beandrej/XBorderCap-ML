@@ -25,7 +25,7 @@ class BaseData(Dataset):
         df = pd.DataFrame(self.data)
         plt.figure(figsize=(15, 14))
         sns.heatmap(df.corr(), annot=False, cmap="coolwarm", fmt=".2f", vmin=-1, vmax=1)
-        plt.title("Feature Correlation Heatmap")
+        plt.title("Correlation Heatmap", fontsize=16)
         plt.show()
 
     def printStats(self):
@@ -176,8 +176,8 @@ class TypeData(BaseData):
         if loadCSV and os.path.exists(self.path):
             self.loadCSV()
         else:
-            # self.data = self.merge_all()
-            self.data = self.agg_gen()
+            self.data = self.merge_all()
+            #self.data = self.agg_gen()
             self.dropSparse()
             self.dropEX()
             self.cutDataset()
@@ -193,6 +193,35 @@ class TypeData(BaseData):
                 self.saveCSV()
 
     def merge_all(self):
+        base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables', self.source, self.type)
+        demand_data = []
+
+        for root, dirs, files in os.walk(base_path):
+            for file in files:
+                if file.endswith('.csv'):
+                    file_path = os.path.join(root, file)
+                    df = pd.read_csv(file_path, parse_dates=True, index_col=0)
+                    country_code = file.split('.')[0]
+                    if self.source.lower() == 'entsoe':
+                        df = df.add_prefix(f"{country_code}_")
+                    else:
+                        df = df.add_prefix(f"{country_code}_")
+                        
+                    df = df.ffill().bfill() 
+                    demand_data.append(df)
+
+        combined_df = pd.concat(demand_data, axis=1, join='inner')
+
+        time_diffs = combined_df.index.to_series().diff()
+        large_gaps = time_diffs > pd.Timedelta(hours=24)
+        valid_indices = combined_df.index[~large_gaps]
+
+        # Creating a new DataFrame that excludes the periods immediately following large gaps
+        filtered_df = combined_df.loc[valid_indices]
+
+        return filtered_df
+
+    def merge_all_old(self):
 
         base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables', self.source, self.type)
         demand_data = []
@@ -206,7 +235,7 @@ class TypeData(BaseData):
                     if self.source.lower() == 'entsoe':
                         df = df.add_prefix(f"{country_code}_")
                     else:
-                        df = df.add_suffix(f"_actual_load")
+                        df = df.add_prefix(f"{country_code}_")
                     demand_data.append(df)
 
         combined_df = pd.concat(demand_data, axis=1)
@@ -236,6 +265,7 @@ class TypeData(BaseData):
                     f"{country}_FLEX": 0,
                     f"{country}_NUC": 0,
                     f"{country}_WATER": 0,
+                    f"{country}_RET": 0,
                     f"{country}_OTHER": 0
                 }
 
@@ -243,10 +273,17 @@ class TypeData(BaseData):
                     if col.startswith("generation_"):
                         category = "_".join(col.split("_")[1:]) 
 
-                        if category.startswith("wind") or category == "solar" or category.startswith("hydro_run"):
+                        if category.startswith("wind") or category == "solar" or category.startswith("hydro"):
+                            grouped_data[f"{country}_RET"] += df[col].fillna(0)
+
+                        if category.startswith("wind") or category == "solar":
                             grouped_data[f"{country}_INFLEX"] += df[col].fillna(0)
 
-                        elif category.startswith("hydro"):
+                        if category.startswith("hydro_run"):
+                            grouped_data[f"{country}_INFLEX"] += df[col].fillna(0)
+                            grouped_data[f"{country}_WATER"] += df[col].fillna(0)
+
+                        elif category.startswith("hydro") and not category.startswith("hydro_run"):
                             grouped_data[f"{country}_WATER"] += df[col].fillna(0)
 
                         elif category.startswith("fossil") or category in ["hydro_water_reservoir", "hydro_pumped_storage"]:
@@ -256,15 +293,18 @@ class TypeData(BaseData):
                             grouped_data[f"{country}_NUC"] += df[col].fillna(0)
 
                         else:
-                            grouped_data[f"{country}_OTHER"] += df[col].fillna(0) 
+                            grouped_data[f"{country}_OTHER"] += df[col].fillna(0)
 
                 country_df = pd.DataFrame(grouped_data, index=df.index)
                 country_df[f"{country}_TOT_GEN"] = (
                     country_df[f"{country}_INFLEX"] +
                     country_df[f"{country}_FLEX"] +
                     country_df[f"{country}_NUC"] +
-                    country_df[f"{country}_WATER"] +
                     country_df[f"{country}_OTHER"]
+                )
+                country_df[f"{country}_RET_RATIO"] = (
+                    country_df[f"{country}_RET"] /
+                    country_df[f"{country}_TOT_GEN"]
                 )
 
                 if merged_df is None:

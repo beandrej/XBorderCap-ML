@@ -1,0 +1,3 @@
+NTC: "DE_LU_to_CH", "CH_to_DE_LU", "ES_to_PT", "PT_to_ES", "ES_to_FR", "FR_to_ES", "DE_LU_to_DK_1", "DK_1_to_DE_LU"
+MAXBEX: "GER_FRA", "FRA_GER", "CZE_AUS", "AUS_CZE", "FRA_BEL", "BEL_FRA", "BEL_NET", "NET_BEL"
+rolling_window(24)

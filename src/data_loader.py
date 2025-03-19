@@ -20,13 +20,25 @@ DATATYPE = 'demand'
 
 enable_plot = False
 
+NTC_START = '2019-01-01 00:00:00'
+NTC_END = '2024-12-10 23:00:00'
+
+MAXBEX_START = '2022-06-09 00:00:00'
+MAXBEX_END = '2024-12-31 23:00:00'
+
 def main():
 
     #*****************************************************************************************************************
     #   CREATOR
     #*****************************************************************************************************************
 
-    # created = TypeData('nordpool', 'generation_by_type', 'GROUPED_GEN_NP', loadCSV=False, saveCSV=True)
+
+
+    #created = TypeData('nordpool', 'generation_by_type', 'GEN_NP', loadCSV=False, saveCSV=True)
+    # created.printStats()
+    # created.cutDataset(start_date='2020-01-01 00:00:00', end_date=NTC_END)
+    # created.printStats()
+
     # created.printStats()
 
     # combine(df_list=[loaded1, loaded2], out_name='TOT_GEN_AGG')
@@ -42,12 +54,29 @@ def main():
     # created.printStats()
     # created.saveCSV()
 
+
+
+
     #*****************************************************************************************************************
     #   LOADER
     #*****************************************************************************************************************
 
-    df = BaseData('cleaned_dataframe')
-    # # Find columns with NaNs
+
+
+    #df = BaseData('BASELINE_NTC')
+    #df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_NTC.csv"), index_col=0)
+
+
+    # selected_columns = ['GER_generation_wind_onshore', 'GER_generation_wind_offshore', 'DE_LU_to_CH']
+    # new_df = df[selected_columns]
+
+    # # Optionally, save the new DataFrame to a new CSV file
+    # new_df.to_csv("filtered_data.csv")
+    # #df.printStats()
+    
+    #.loadCSV()
+    #df.info()
+    ## # Find columns with NaNs
     # nan_columns = df.isna().sum()
 
     # # Filter only columns where NaNs exist
@@ -68,19 +97,49 @@ def main():
 
     # print("Cleaned dataframe saved as 'cleaned_dataframe.csv'")
 
+    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAX_BEX_old.csv"), index_col=0)
+
+    # columns_to_keep = [
+    #     "AUS_CZE", "CZE_AUS", "AUS_GER", "GER_AUS", "BEL_FRA", "FRA_BEL",
+    #     "BEL_GER", "GER_BEL", "BEL_NET", "NET_BEL", "CZE_GER", "GER_CZE",
+    #     "CZE_POL", "POL_CZE", "GER_NET", "NET_GER", "GER_POL", "POL_GER",
+    #     "GER_FRA", "FRA_GER"
+    # ]
+    # new_df = df[columns_to_keep]
+    # new_df.to_csv("filtered_dataframe.csv", index=True)
+
+
+
     #*****************************************************************************************************************
     #   MERGER
     #*****************************************************************************************************************
 
-    # df1 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "TOT_AGG_FEATURES.csv"), index_col=0)
+
+
+    # df1 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "plots_df.csv"), index_col=0)
     # df2 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
-    # merged_load = pd.merge(df1, df2, left_index=True, right_index=True, how="outer")
-    # merged_load.info()
-    # merged_load.to_csv("updated_dataframe444.csv")
+    # merged = pd.merge(df1, df2, left_index=True, right_index=True, how="outer")
+    # merged.info()
+    # merged.to_csv("updated_dataframe444.csv")
 
+    # gen_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD.csv"), index_col=0)
+    # gen_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "WEATHER.csv"), index_col=0)
+    # dem_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAXBEX.csv"), index_col=0)
+    # dem_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
 
+    # common_index = gen_ee.index.intersection(gen_np.index)
+    # common_index = common_index.intersection(dem_ee.index)
+    # common_index = common_index.intersection(dem_np.index)
 
+    # gen_ee = gen_ee.loc[common_index]
+    # gen_np = gen_np.loc[common_index]
+    # dem_ee = dem_ee.loc[common_index]
+    # dem_np = dem_np.loc[common_index]
 
+    # merged_df = pd.concat([gen_ee, gen_np, dem_ee, dem_np], axis=1)
+    # output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_NTC.csv")
+    # merged_df.to_csv(output_path)
+    
     # countries = set(col.split('_')[0] for col in df.columns)
 
     # # Dictionary to store new columns before inserting them in order
@@ -110,14 +169,38 @@ def main():
 
 
 
-    # plt.figure(figsize=(15, 14))
-    # sns.heatmap(df.corr(), annot=False, cmap="coolwarm", fmt=".2f", vmin=-1, vmax=1)
-    # plt.title("Feature Correlation Heatmap")
-    # plt.show()
+    #*****************************************************************************************************************
+    #   PLOT
+    #*****************************************************************************************************************
+
+    country = "FRA"
+
+    df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_NTC.csv"), index_col=0)
+    df.index = pd.to_datetime(df.index)
+    df_resampled = df.resample('h').mean()
+
+
+    df_resampled['is_weekend'] = (df_resampled.index.weekday >= 5).astype(int)
+    columns_of_interest = ["BEL_FRA", "GER_POL", "GER_FRA"]
+    df_resampled['sum_selected'] = df_resampled[columns_of_interest].sum(axis=1)
+
+    sum_weekday_avg = df_resampled[df_resampled['is_weekend'] == 0]['sum_selected'].mean()
+    sum_weekend_avg = df_resampled[df_resampled['is_weekend'] == 1]['sum_selected'].mean()
+
+    print(f"Weekday Sum Avg: {sum_weekday_avg:.2f}")
+    print(f"Weekend Sum Avg: {sum_weekend_avg:.2f}")
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.bar(['Weekday', 'Weekend'], [sum_weekday_avg, sum_weekend_avg], color=['skyblue', 'orange'])
+    ax.set_ylabel("Average MAXBEX Cross Border Capacities [MWh]")
+    ax.set_title("Average MAXBEX Cross-Border Capacities \nWeekday vs Weekend")
+    plt.grid(axis='y')
+    plt.tight_layout()
+    plt.show()
 
 
     if enable_plot:
-        plot_cols(loaded, column_indices=[0, 1, 3], start_date="2015-01-01", end_date="2026-01-01")
+        plot_cols(df, columns=[], start_date="2015-01-01", end_date="2026-01-01")
 
 
 def plot_cols(dataset, columns=None, column_indices=None, start_date=None, end_date=None):
@@ -129,13 +212,16 @@ def plot_cols(dataset, columns=None, column_indices=None, start_date=None, end_d
     else:
         index_based_columns = []
 
+
     selected_columns = set(columns or []) | set(index_based_columns)
     available_cols = [col for col in selected_columns if col in df.columns]
 
-    plot_data = df[available_cols].copy()
+    complete_index = pd.date_range(start=df.index.min(), end=df.index.max(), freq='h') 
+    plot_data = df[available_cols].reindex(complete_index)  
+
+    # If specific start and end dates are provided, filter the data
     if start_date and end_date:
         plot_data = plot_data.loc[start_date:end_date]
-
 
     plt.figure(figsize=(12, 6))
     for col in available_cols:

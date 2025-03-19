@@ -2,7 +2,7 @@ import os
 import torch
 import pandas as pd
 from tqdm import tqdm
-from data_loader import CrossBorderData
+from data_loader import *
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import TensorDataset, DataLoader
 from model import *
@@ -15,8 +15,8 @@ SPLIT_RATIO = config.TRAIN_SPLIT
 model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_params', f"{MODEL_NAME}.pth")
 pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions', f"{MODEL_NAME}_{data_loader.DATASET_NAME}_{data_loader.DOMAIN}.csv")
 
-full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAX_BEX_WITH_FEATURES.csv"), index_col=0)
-first_target_idx = full_df.columns.get_loc("AUS_BEL")
+full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX.csv"), index_col=0)
+first_target_idx = full_df.columns.get_loc("AUS_CZE")
 split_index = int(len(full_df) * SPLIT_RATIO)
 
 X = full_df.iloc[:, :first_target_idx]

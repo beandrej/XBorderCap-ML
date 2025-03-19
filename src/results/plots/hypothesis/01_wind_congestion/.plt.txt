@@ -1,0 +1,37 @@
+   df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_NTC.csv"), index_col=0)
+    df.index = pd.to_datetime(df.index)
+    df_resampled = df.resample('h').mean()
+
+    fig, ax1 = plt.subplots(figsize=(15, 7))
+
+    sum_columns3 = ["AUS_GER", "FRA_GER", "CZE_GER", "BEL_GER", "NET_GER", "POL_GER", "CH_to_DE_LU"]
+    sum_columns2 = ["GER_AUS", "GER_FRA", "GER_CZE", "GER_BEL", "GER_NET", "POL_GER", "DE_LU_to_CH"]
+    sum_columns1 = ["GER_generation_wind_onshore", "GER_generation_wind_offshore"]
+
+    df_resampled["summed_cols1"] = df_resampled[sum_columns1].sum(axis=1)
+    df_resampled["summed_cols2"] = df_resampled[sum_columns2].sum(axis=1)
+    df_resampled["summed_cols3"] = df_resampled[sum_columns3].sum(axis=1)
+
+    columns_to_clean = ["summed_cols1", "summed_cols2", "summed_cols3"]  
+    df_resampled[columns_to_clean] = df_resampled[columns_to_clean].replace(0, np.nan)  
+
+    df_resampled["summed_cols1"] = df_resampled["summed_cols1"].rolling(window=365, min_periods=1).mean()
+    df_resampled["summed_cols2"] = df_resampled["summed_cols2"].rolling(window=365, min_periods=1).mean()
+    df_resampled["summed_cols3"] = df_resampled["summed_cols3"].rolling(window=365, min_periods=1).mean()
+
+    ax1.plot(df_resampled.index, df_resampled["summed_cols3"], color="blue", label="Import GER")
+    ax1.plot(df_resampled.index, df_resampled["summed_cols2"], color="green", label="Export GER")
+
+    ax1.set_ylabel("Cross Border Capacities [MWh]")
+    ax1.set_xlabel("Timestamp")
+
+    ax2 = ax1.twinx()
+
+    ax2.plot(df_resampled.index, df_resampled["summed_cols1"], color="red", alpha=1, label="Wind Generation GER")
+    ax2.set_ylabel("Wind Generation [MWh]")
+
+    ax1.legend(loc="upper left")
+    ax2.legend(loc="upper right")
+    plt.grid()
+    plt.title("Wind Generation in GER with Border Capacities")
+    plt.show()

@@ -1,0 +1,39 @@
+    country = "FRA"
+
+    df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_NTC.csv"), index_col=0)
+    df.index = pd.to_datetime(df.index)
+    df_resampled = df.resample('h').mean()
+
+    fig, ax1 = plt.subplots(figsize=(15, 7))
+
+    sum_columns3 = ["BEL_FRA", "GER_FRA", "ES_to_FR", "CH_to_FR", "IT_NORD_to_FR"]
+    sum_columns2 = ["FRA_BEL", "FRA_GER", "FR_to_ES", "FR_to_CH", "FR_to_IT_NORD"]
+    sum_columns1 = ["FRA_generation_nuclear"]
+
+    df_resampled["summed_cols1"] = df_resampled[sum_columns1].sum(axis=1)
+    df_resampled["summed_cols2"] = df_resampled[sum_columns2].sum(axis=1)
+    df_resampled["summed_cols3"] = df_resampled[sum_columns3].sum(axis=1)
+
+    columns_to_clean = ["summed_cols1", "summed_cols2", "summed_cols3"]  
+    df_resampled[columns_to_clean] = df_resampled[columns_to_clean].replace(0, np.nan)  
+
+    df_resampled["summed_cols1"] = df_resampled["summed_cols1"].rolling(window=365, min_periods=1).mean()
+    df_resampled["summed_cols2"] = df_resampled["summed_cols2"].rolling(window=365, min_periods=1).mean()
+    df_resampled["summed_cols3"] = df_resampled["summed_cols3"].rolling(window=365, min_periods=1).mean()
+
+    ax1.plot(df_resampled.index, df_resampled["summed_cols3"], color="blue", label=f"Import {country}")
+    ax1.plot(df_resampled.index, df_resampled["summed_cols2"], color="green", label=f"Export {country}")
+    ax1.set_ylabel("Cross Border Capacities [MWh]")
+    ax1.set_xlabel("Timestamp")
+
+
+    ax2 = ax1.twinx()
+    ax2.plot(df_resampled.index, df_resampled["summed_cols1"], color="red", alpha=1, label=f"Nuclear Generation {country}")
+    ax2.set_ylabel(f"Nuclear Generation {country} [MWh]")
+
+
+    ax1.legend(loc="upper left")
+    ax2.legend(loc="upper right")
+    plt.grid()
+    plt.title(f"Nuclear {country} with Border Capacities")
+    plt.show()

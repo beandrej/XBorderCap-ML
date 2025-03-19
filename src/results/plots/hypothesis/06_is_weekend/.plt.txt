@@ -1,0 +1,22 @@
+    df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_NTC.csv"), index_col=0)
+    df.index = pd.to_datetime(df.index)
+    df_resampled = df.resample('h').mean()
+
+
+    df_resampled['is_weekend'] = (df_resampled.index.weekday >= 5).astype(int)
+    columns_of_interest = ["BEL_FRA", "GER_POL", "GER_FRA"]
+    df_resampled['sum_selected'] = df_resampled[columns_of_interest].sum(axis=1)
+
+    sum_weekday_avg = df_resampled[df_resampled['is_weekend'] == 0]['sum_selected'].mean()
+    sum_weekend_avg = df_resampled[df_resampled['is_weekend'] == 1]['sum_selected'].mean()
+
+    print(f"Weekday Sum Avg: {sum_weekday_avg:.2f}")
+    print(f"Weekend Sum Avg: {sum_weekend_avg:.2f}")
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.bar(['Weekday', 'Weekend'], [sum_weekday_avg, sum_weekend_avg], color=['skyblue', 'orange'])
+    ax.set_ylabel("Average MAXBEX Cross Border Capacities [MWh]")
+    ax.set_title("Average MAXBEX Cross-Border Capacities \nWeekday vs Weekend")
+    plt.grid(axis='y')
+    plt.tight_layout()
+    plt.show()

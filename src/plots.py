@@ -13,15 +13,15 @@ model_name = config.MODEL_NAME
 pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions', f"{model_name}_{data_loader.DATASET_NAME}_{data_loader.DOMAIN}.csv")
 fig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/plots/pred', f"{model_name}_{data_loader.DATASET_NAME}_{data_loader.DOMAIN}.png")
 
-full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAX_BEX_WITH_FEATURES.csv"), index_col=0)
-first_target_idx = full_df.columns.get_loc("AUS_BEL")
+full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX.csv"), index_col=0)
+first_target_idx = full_df.columns.get_loc("AUS_CZE")
 Y = full_df.iloc[:, first_target_idx:]
 
 predictions_df = pd.read_csv(pred_path)
 comparison_df = Y.merge(predictions_df, on="timestamp", how='inner')
 
-plot_real = comparison_df["AUS_BEL"]
-plot_pred = comparison_df["AUS_BEL_pred"]
+plot_real = comparison_df["AUS_CZE"]
+plot_pred = comparison_df["AUS_CZE_pred"]
 
 
 plt.figure(figsize=(12, 6))
