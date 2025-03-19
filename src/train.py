@@ -137,7 +137,7 @@ metrics_df = pd.DataFrame({
     'mae': mae_scores
 })
 
-csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', f"{config.MODEL_NAME}_{df_to_load}_metrics.csv")
+csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', f"{config.MODEL_NAME}_{data_loader.DATASET_NAME}_metrics.csv")
 metrics_df.to_csv(csv_path, index=False)
 print(f"Metrics saved to: {csv_path}")
 
