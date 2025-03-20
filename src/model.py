@@ -61,6 +61,32 @@ class Net(nn.Module):
         x = self.fc5(x)
         return x
 
+class MultiBorderClassifier(nn.Module):
+    def __init__(self, input_dim, border_class_counts):
+        super().__init__()
+        self.shared_fc = nn.Sequential(
+            nn.Linear(input_dim, 512),
+            nn.ReLU(),
+            nn.BatchNorm1d(512),
+            nn.Dropout(config.DROPOUT_NN),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.BatchNorm1d(256),
+            nn.Dropout(config.DROPOUT_NN)
+        )
+        # Dynamically create classifier heads per border
+        self.border_heads = nn.ModuleDict({
+            border: nn.Linear(256, num_classes)
+            for border, num_classes in border_class_counts.items()
+        })
+
+    def forward(self, x):
+        shared_out = self.shared_fc(x)
+        outputs = {}
+        for border, head in self.border_heads.items():
+            outputs[border] = head(shared_out)  # Raw logits for each border
+        return outputs
+
 class LSTM(nn.Module):
     def __init__(self, input_dim, hidden_dim=config.HIDDEN_DIM, num_layers=config.NUM_LAYERS, dropout=config.DROPOUT_LSTM):
         super(LSTM, self).__init__()
@@ -93,5 +119,7 @@ def get_model(model_name, input_dim, output_dim):
         return Net(input_dim, output_dim)
     elif model_name == "lstm":
         return LSTM(input_dim, output_dim)
+    elif model_name == "classifier":
+        return MultiBorderClassifier(input_dim, output_dim)
     else:
         raise ValueError(f"Unknown model: {model_name}")
