@@ -45,14 +45,19 @@ print("Shape of Y_train:", Y_train.shape)
 print("Shape of X_val:", X_val.shape) 
 print("Shape of Y_val:", Y_val.shape) 
 
-scaler = StandardScaler()
-X_train = scaler.fit_transform(X_train)
-X_val = scaler.transform(X_val)
+X_scaler = StandardScaler()
+Y_scaler = StandardScaler()
+
+X_train = X_scaler.fit_transform(X_train)
+X_val = X_scaler.transform(X_val)
+
+Y_train = Y_scaler.fit_transform(Y_train)
+Y_val = Y_scaler.transform(Y_val)
 
 train_dataset = TensorDataset(torch.tensor(X_train, dtype=torch.float32),
-                              torch.tensor(Y_train.values, dtype=torch.float32))
+                              torch.tensor(Y_train, dtype=torch.float32))
 val_dataset = TensorDataset(torch.tensor(X_val, dtype=torch.float32),
-                            torch.tensor(Y_val.values, dtype=torch.float32))
+                            torch.tensor(Y_val, dtype=torch.float32))
 
 train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
 val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
@@ -61,7 +66,7 @@ input_dim = next(iter(train_loader))[0].shape[1]
 output_dim = Y_train.shape[1]
 model = get_model(MODEL_NAME, input_dim, output_dim).to(device)
 
-criterion = nn.MSELoss()
+criterion = nn.HuberLoss()
 optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
@@ -106,15 +111,21 @@ for epoch in range(config.EPOCHS):
             if MODEL_NAME == "lstm":
                 X_batch = X_batch.view(X_batch.shape[0], 1, X_batch.shape[1])
             
-            predictions = model(X_batch)
-            loss = criterion(predictions, y_batch)
+            y_pred = model(X_batch)
+            loss = criterion(y_pred, y_batch)
             val_loss += loss.item()
+            
+            y_pred = y_pred.cpu().numpy()
+            y_batch = y_batch.cpu().numpy()
 
-            y_true_list.append(y_batch.cpu())
-            y_pred_list.append(predictions.cpu())
-    
-    y_true = torch.cat(y_true_list, dim=0).numpy()
-    y_pred = torch.cat(y_pred_list, dim=0).numpy()
+            y_pred = Y_scaler.inverse_transform(y_pred)
+            y_true = Y_scaler.inverse_transform(y_batch)
+
+            y_pred_list.append(y_pred)
+            y_true_list.append(y_true)    
+
+    y_pred_full = np.vstack(y_pred_list)
+    y_true_full = np.vstack(y_true_list)
 
     r2 = r2_score(y_true, y_pred)
     mae = mean_absolute_error(y_true, y_pred)
@@ -137,7 +148,7 @@ metrics_df = pd.DataFrame({
     'mae': mae_scores
 })
 
-csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', f"{config.MODEL_NAME}_{data_loader.DATASET_NAME}_metrics.csv")
+csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', f"metrics_{config.MODEL_NAME}_{config.CURRENT_DF}.csv")
 metrics_df.to_csv(csv_path, index=False)
 print(f"Metrics saved to: {csv_path}")
 

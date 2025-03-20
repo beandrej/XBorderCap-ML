@@ -23,15 +23,15 @@ class Net(nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
 
-        self.fc1 = nn.Linear(input_dim, 4096)
-        self.batch_norm1 = nn.BatchNorm1d(4096)
+        self.fc1 = nn.Linear(input_dim, 1024)
+        self.batch_norm1 = nn.BatchNorm1d(1024)
         self.dropout1 = nn.Dropout(p=config.DROPOUT_NN)
 
-        self.fc2 = nn.Linear(4096, 1024)
-        self.batch_norm2 = nn.BatchNorm1d(1024)
+        self.fc2 = nn.Linear(1024, 512)
+        self.batch_norm2 = nn.BatchNorm1d(512)
         self.dropout2 = nn.Dropout(p=config.DROPOUT_NN)
 
-        self.fc3 = nn.Linear(1024, 256)
+        self.fc3 = nn.Linear(512, 256)
         self.batch_norm3 = nn.BatchNorm1d(256)
         self.dropout3 = nn.Dropout(p=config.DROPOUT_NN)
 
@@ -39,28 +39,26 @@ class Net(nn.Module):
         self.batch_norm4 = nn.BatchNorm1d(128)
         self.dropout4 = nn.Dropout(p=config.DROPOUT_NN)
 
-        self.fc5 = nn.Linear(128, 64)
-        self.fc6 = nn.Linear(64, output_dim)
+        self.fc5 = nn.Linear(128, output_dim)
 
     def forward(self, x):
         x = torch.nn.functional.leaky_relu(self.fc1(x), negative_slope=0.01)
         x = self.batch_norm1(x)
         x = self.dropout1(x)
 
-        x = torch.nn.functional.elu(self.fc2(x), alpha=1.0)
+        x = torch.nn.functional.leaky_relu(self.fc2(x), negative_slope=0.01)
         x = self.batch_norm2(x)
         x = self.dropout2(x)
 
-        x = torch.nn.functional.softplus(self.fc3(x))
+        x = torch.nn.functional.leaky_relu(self.fc3(x), negative_slope=0.01)
         x = self.batch_norm3(x)
         x = self.dropout3(x)
 
-        x = torch.nn.functional.elu(self.fc4(x), alpha=1.0)
+        x = torch.nn.functional.leaky_relu(self.fc4(x), negative_slope=0.01)
         x = self.batch_norm4(x)
         x = self.dropout4(x)
 
         x = self.fc5(x)
-        x = self.fc6(x)
         return x
 
 class LSTM(nn.Module):

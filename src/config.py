@@ -2,7 +2,7 @@
 CURRENT_DF = "BASELINE_MAXBEX"
 
 # -------  MODELING PARAMETERS ---------
-MODEL_TYPE = 2
+MODEL_TYPE = 1
 VALID_MODELS = ['linreg',
                 'reg',  
                 'nn',       
@@ -14,7 +14,7 @@ HIDDEN_DIM = 128
 NUM_LAYERS = 3  
 DROPOUT_LSTM = 0.3  
 # NN
-DROPOUT_NN = 0.2
+DROPOUT_NN = 0.0
 
 
 # -------  TRAINING PARAMETERS ---------

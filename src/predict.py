@@ -13,9 +13,9 @@ MODEL_NAME = config.MODEL_NAME
 SPLIT_RATIO = config.TRAIN_SPLIT
 
 model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_params', f"{MODEL_NAME}.pth")
-pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions', f"{MODEL_NAME}_{data_loader.DATASET_NAME}_{data_loader.DOMAIN}.csv")
+pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions', f"pred_{MODEL_NAME}_{config.CURRENT_DF}.csv")
 
-full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX.csv"), index_col=0)
+full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{config.CURRENT_DF}.csv"), index_col=0)
 first_target_idx = full_df.columns.get_loc("AUS_CZE")
 split_index = int(len(full_df) * SPLIT_RATIO)
 
@@ -26,11 +26,14 @@ split_index = int(len(full_df) * SPLIT_RATIO)
 X_test = X.iloc[split_index:]
 Y_test = Y.iloc[split_index:]
 
-scaler = StandardScaler()
-X_test = scaler.fit_transform(X_test)
+X_scaler = StandardScaler()
+Y_scaler = StandardScaler()
+
+X_test = X_scaler.fit_transform(X_test)
+Y_test_scaled = Y_scaler.fit_transform(Y_test)
 
 X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-Y_test_tensor = torch.tensor(Y_test.values, dtype=torch.float32)
+Y_test_tensor = torch.tensor(Y_test_scaled, dtype=torch.float32)
 
 test_dataset = TensorDataset(X_test_tensor, Y_test_tensor)
 
@@ -61,15 +64,17 @@ with torch.no_grad():
         if MODEL_NAME == "lstm":
             X_batch = X_batch.view(X_batch.shape[0], 1, X_batch.shape[1])
 
-        pred = model(X_batch)
-        predictions.extend(pred.cpu().numpy().tolist())  # ✅ Keeps batch structure
-        progress_bar.set_postfix(current_pred=pred[0, 0].item())  # ✅ Extracts first value from first row
+        y_pred = model(X_batch)
+        predictions.extend(y_pred.cpu().numpy().tolist())
+        progress_bar.set_postfix(current_pred=y_pred[0, 0].item()) 
 
+pred_numpy = np.array(predictions)
+pred_real = Y_scaler.inverse_transform(pred_numpy)
 
 border_names = Y_test.columns.to_list()
 border_names = [f"{name}_pred" for name in border_names]
 
-pred_df = pd.DataFrame(predictions, columns=border_names)
+pred_df = pd.DataFrame(pred_real, columns=border_names)
 pred_df.insert(0, "timestamp", pd.to_datetime(test_timestamps))
 
 pred_df.to_csv(pred_path, index=False)

@@ -11,11 +11,11 @@ model_name = config.MODEL_NAME
 
 # Paths
 pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        'results/predictions', f"pred_{model_name}_{data_loader.DATASET_NAME}.csv")
+                        'results/predictions', f"pred_{model_name}_{config.CURRENT_DF}.csv")
 fig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       'results/plots/pred', f"{model_name}_{data_loader.DATASET_NAME}_{data_loader.DOMAIN}.png")
+                       'results/plots/pred', f"{model_name}_{config.CURRENT_DF}.png")
 y_true_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                   '../prep_data', f"{data_loader.DATASET_NAME}_{data_loader.DOMAIN}.csv")
+                                   '../prep_data', f"{config.CURRENT_DF}.csv")
 
 bl_borders = PltCombinedBLDF(pred_path, y_true_path, "AUS_CZE", fig_path)
 bl_borders.plot_border("AUS_CZE", save_plot=False)
