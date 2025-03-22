@@ -27,14 +27,14 @@ MAXBEX_START = '2022-06-09 00:00:00'
 MAXBEX_END = '2024-12-31 23:00:00'
 
 def main():
-
+    """
     #*****************************************************************************************************************
     #   CREATOR
     #*****************************************************************************************************************
+    """
 
 
-
-    #created = TypeData('nordpool', 'generation_by_type', 'GEN_NP', loadCSV=False, saveCSV=True)
+    #created = TypeData('entsoe', 'generation_per_type', 'GEN_EE_AGG', loadCSV=False, saveCSV=True)
     # created.printStats()
     # created.cutDataset(start_date='2020-01-01 00:00:00', end_date=NTC_END)
     # created.printStats()
@@ -56,14 +56,16 @@ def main():
 
 
 
-
+    """
     #*****************************************************************************************************************
     #   LOADER
     #*****************************************************************************************************************
+    """
 
 
-
-    #df = BaseData('BASELINE_NTC')
+    #df = BaseData('GENLOAD_AGG')
+    # df.addTimeFeatures()
+    # df.saveCSV()
     #df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_NTC.csv"), index_col=0)
 
 
@@ -71,7 +73,7 @@ def main():
     # new_df = df[selected_columns]
 
     # # Optionally, save the new DataFrame to a new CSV file
-    # new_df.to_csv("filtered_data.csv")
+    # new_df.to_csv("filtered_data.csv") 
     # #df.printStats()
     
     #.loadCSV()
@@ -109,11 +111,11 @@ def main():
     # new_df.to_csv("filtered_dataframe.csv", index=True)
 
 
-
+    """
     #*****************************************************************************************************************
     #   MERGER
     #*****************************************************************************************************************
-
+    """
 
 
     # df1 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "plots_df.csv"), index_col=0)
@@ -122,24 +124,34 @@ def main():
     # merged.info()
     # merged.to_csv("updated_dataframe444.csv")
 
-    # gen_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD.csv"), index_col=0)
-    # gen_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "WEATHER.csv"), index_col=0)
-    # dem_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAXBEX.csv"), index_col=0)
-    # dem_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
+    
+    gen_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_AGG.csv"), index_col=0)
+    gen_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "WEATHER.csv"), index_col=0)
+    dem_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAXBEX.csv"), index_col=0)
+    #dem_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "DEM_NP.csv"), index_col=0)
 
-    # common_index = gen_ee.index.intersection(gen_np.index)
-    # common_index = common_index.intersection(dem_ee.index)
+    common_index = gen_ee.index.intersection(gen_np.index)
+    common_index = common_index.intersection(dem_ee.index)
     # common_index = common_index.intersection(dem_np.index)
 
-    # gen_ee = gen_ee.loc[common_index]
-    # gen_np = gen_np.loc[common_index]
-    # dem_ee = dem_ee.loc[common_index]
+    gen_ee = gen_ee.loc[common_index]
+    gen_np = gen_np.loc[common_index]
+    dem_ee = dem_ee.loc[common_index]
     # dem_np = dem_np.loc[common_index]
 
-    # merged_df = pd.concat([gen_ee, gen_np, dem_ee, dem_np], axis=1)
-    # output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_NTC.csv")
-    # merged_df.to_csv(output_path)
+    merged_df = pd.concat([gen_ee, gen_np, dem_ee], axis=1)
+    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_GENLOAD_AGG.csv")
+    merged_df.to_csv(output_path)
     
+
+    """
+    #***********************************************
+    # ADD RES LOAD & IEX
+    #***********************************************"
+    """
+
+    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_INFLEX.csv"), index_col=0)
+
     # countries = set(col.split('_')[0] for col in df.columns)
 
     # # Dictionary to store new columns before inserting them in order
@@ -156,23 +168,29 @@ def main():
     #         df[f"{country}_IEX"] = df[tot_gen_col] - df[actual_load_col]
     #         iex_columns[country] = f"{country}_IEX"
 
-    #     # Calculate RES_LOAD if the necessary columns exist
+
+    #     # Calculate RES_LOAD
     #     if tot_gen_col in df.columns and inflex_col in df.columns:
-    #         df[f"{country}_RES_LOAD"] = df[tot_gen_col] - df[inflex_col]
-    #         res_load_columns[country] = f"{country}_RES_LOAD"
+    #         res_load_col = f"{country}_RES_LOAD"
+    #         df[res_load_col] = df[tot_gen_col] - df[inflex_col]
+    #         res_load_columns[country] = res_load_col
+
+    #         # ✅ RES_LOAD_RATIO = RES_LOAD / actual_load
+    #         if actual_load_col in df.columns:
+    #             df[f"{country}_RES_LOAD_RATIO"] = df[res_load_col] / df[actual_load_col]
+
+    #         # ✅ RES_LOAD_GRAD = difference (signed) between timesteps
+    #         df[f"{country}_RES_LOAD_GRAD"] = df[res_load_col].diff().fillna(0)
 
     # # Reorder columns
     # df.to_csv("updated_dataframe.csv")
     # print("Updated dataframe saved as 'updated_dataframe4.csv'")
-    # gen1 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GROUPED_GEN_EE.csv"), index_col=0)
-    # gen2 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GROUPED_GEN_NP.csv"), index_col=0)
 
-
-
+    """
     #*****************************************************************************************************************
     #   PLOT
     #*****************************************************************************************************************
-
+    """
     # country = "FRA"
 
     # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_NTC.csv"), index_col=0)

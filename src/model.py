@@ -2,15 +2,6 @@ import torch
 import torch.nn as nn
 import config
 
-class LinReg(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(LinReg, self).__init__()
-        self.weight = nn.Parameter(torch.randn(input_dim, output_dim))
-        self.bias = nn.Parameter(torch.randn(output_dim))
-
-    def forward(self, x):
-        return x @ self.weight + self.bias
-
 class Reg(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(Reg, self).__init__()
@@ -88,7 +79,7 @@ class MultiBorderClassifier(nn.Module):
         return outputs
 
 class LSTM(nn.Module):
-    def __init__(self, input_dim, hidden_dim=config.HIDDEN_DIM, num_layers=config.NUM_LAYERS, dropout=config.DROPOUT_LSTM):
+    def __init__(self, input_dim, hidden_dim=128, num_layers=3, dropout=0.3):
         super(LSTM, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
@@ -111,9 +102,7 @@ class LSTM(nn.Module):
 
 def get_model(model_name, input_dim, output_dim):
     print(f"\nUsing model: {model_name}")
-    if model_name == "linreg":
-        return LinReg(input_dim, output_dim)
-    elif model_name == "reg":
+    if model_name == "BaseModel":
         return Reg(input_dim, output_dim)
     elif model_name == "nn":
         return Net(input_dim, output_dim)

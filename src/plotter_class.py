@@ -6,9 +6,7 @@ import config
 import plotly
 
 class PltCombinedBLDF():
-    def __init__(self, pred_path, og_path, target_col, save_path):
-        self.save_path = save_path
-        
+    def __init__(self, pred_path, og_path, target_col):
         full_df = pd.read_csv(og_path, index_col=0)
         target_idx = full_df.columns.get_loc(target_col)
         y_true = full_df.iloc[:, target_idx:].reset_index()
@@ -17,8 +15,8 @@ class PltCombinedBLDF():
         self.comp_df = pd.merge(y_true, y_pred, on="timestamp", how='inner')
         self.comp_df["timestamp"] = pd.to_datetime(self.comp_df["timestamp"])
 
-    def plot_border(self, border, save_plot=False, grid_on=True, show_plot=True):
-        fig, ax = plt.subplots(figsize=(14, 6))
+    def plot_border(self, border, save_path, save_plot=False, grid_on=True, show_plot=True):
+        fig, ax = plt.subplots(figsize=(16, 8))
         ax.plot(self.comp_df["timestamp"], self.comp_df[border],            label="Actual Capacity", color="blue")
         ax.plot(self.comp_df["timestamp"], self.comp_df[f"{border}_pred"],  label="Predicted Capacity", color="red", linestyle="dashed")
         
@@ -27,15 +25,15 @@ class PltCombinedBLDF():
         fig.autofmt_xdate()
 
         ax.set_xlabel("Timestamp")
-        ax.set_ylabel("Cross-Border Capacity")
-        ax.set_title("Predicted vs. Actual Capacity")
-        ax.legend()
+        ax.set_ylabel("Cross-Border Capacity [MW]")
+        ax.set_title(f"{border} Predicted vs. Actual Capacity")
+        ax.legend(loc=1)
 
         if grid_on:
             ax.grid()
         if save_plot:
-            plt.savefig(self.save_path, dpi=300, bbox_inches='tight')
-            print("Figure saved at:", self.save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print("Figure saved at:", save_path)
         if show_plot:
             plt.show()
     
@@ -65,7 +63,7 @@ class PltModelMetric():
         ax.plot(self.df["epoch"], self.df["val_loss"], label="Validation Loss", color="orange")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Loss (MSE)")
-        ax.set_title("MSE of Training vs Validation set")
+        ax.set_title("MSE of Training vs Validation loss")
         ax.legend()
         if grid_on:
             ax.grid()

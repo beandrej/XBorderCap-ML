@@ -176,8 +176,8 @@ class TypeData(BaseData):
         if loadCSV and os.path.exists(self.path):
             self.loadCSV()
         else:
-            self.data = self.merge_all()
-            #self.data = self.agg_gen()
+            #self.data = self.merge_all()
+            self.data = self.agg_gen()
             self.dropSparse()
             self.dropEX()
             self.cutDataset()
@@ -188,6 +188,8 @@ class TypeData(BaseData):
             self.data = self.data.sort_values(by='timestamp')
             self.data = self.data.ffill()
             self.data = self.data.bfill()
+
+            #self.addTimeFeatures()
 
             if saveCSV:
                 self.saveCSV()
@@ -264,8 +266,6 @@ class TypeData(BaseData):
                     f"{country}_INFLEX": 0,
                     f"{country}_FLEX": 0,
                     f"{country}_NUC": 0,
-                    f"{country}_WATER": 0,
-                    f"{country}_RET": 0,
                     f"{country}_OTHER": 0
                 }
 
@@ -273,18 +273,8 @@ class TypeData(BaseData):
                     if col.startswith("generation_"):
                         category = "_".join(col.split("_")[1:]) 
 
-                        if category.startswith("wind") or category == "solar" or category.startswith("hydro"):
-                            grouped_data[f"{country}_RET"] += df[col].fillna(0)
-
-                        if category.startswith("wind") or category == "solar":
+                        if category.startswith("wind") or category == "solar" or category.startswith("hydro_run"):
                             grouped_data[f"{country}_INFLEX"] += df[col].fillna(0)
-
-                        if category.startswith("hydro_run"):
-                            grouped_data[f"{country}_INFLEX"] += df[col].fillna(0)
-                            grouped_data[f"{country}_WATER"] += df[col].fillna(0)
-
-                        elif category.startswith("hydro") and not category.startswith("hydro_run"):
-                            grouped_data[f"{country}_WATER"] += df[col].fillna(0)
 
                         elif category.startswith("fossil") or category in ["hydro_water_reservoir", "hydro_pumped_storage"]:
                             grouped_data[f"{country}_FLEX"] += df[col].fillna(0)
@@ -301,10 +291,6 @@ class TypeData(BaseData):
                     country_df[f"{country}_FLEX"] +
                     country_df[f"{country}_NUC"] +
                     country_df[f"{country}_OTHER"]
-                )
-                country_df[f"{country}_RET_RATIO"] = (
-                    country_df[f"{country}_RET"] /
-                    country_df[f"{country}_TOT_GEN"]
                 )
 
                 if merged_df is None:

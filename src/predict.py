@@ -8,14 +8,15 @@ from torch.utils.data import TensorDataset, DataLoader
 from model import *
 import config
 import data_loader
+import train_reg
 
-MODEL_NAME = config.MODEL_NAME
-SPLIT_RATIO = config.TRAIN_SPLIT
+MODEL_NAME = train_reg.MODEL_NAME
+SPLIT_RATIO = train_reg.TRAIN_SPLIT
 
-model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_params', f"{MODEL_NAME}.pth")
-pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions', f"pred_{MODEL_NAME}_{config.CURRENT_DF}.csv")
+model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_params', f"{train_reg.MODEL_NAME}.pth")
+pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{train_reg.TRAINING_SET}.csv")
 
-full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{config.CURRENT_DF}.csv"), index_col=0)
+full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{train_reg.TRAINING_SET}.csv"), index_col=0)
 first_target_idx = full_df.columns.get_loc("AUS_CZE")
 split_index = int(len(full_df) * SPLIT_RATIO)
 
@@ -37,11 +38,11 @@ Y_test_tensor = torch.tensor(Y_test_scaled, dtype=torch.float32)
 
 test_dataset = TensorDataset(X_test_tensor, Y_test_tensor)
 
-test_loader = DataLoader(test_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=train_reg.BATCH_SIZE, shuffle=False)
 
 test_indices = range(split_index, len(full_df))
-test_timestamps = full_df.index[test_indices]  # ✅ Extracts timestamps from index
-test_timestamps = pd.to_datetime(test_timestamps)  # Ensure datetime format
+test_timestamps = full_df.index[test_indices]
+test_timestamps = pd.to_datetime(test_timestamps)
 
 
 input_dim = next(iter(test_loader))[0].shape[1]
