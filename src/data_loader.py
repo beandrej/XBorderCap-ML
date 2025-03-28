@@ -18,7 +18,7 @@ SOURCE = 'entsoe'
 DATATYPE = 'demand'
 
 
-enable_plot = False
+
 
 NTC_START = '2019-01-01 00:00:00'
 NTC_END = '2024-12-10 23:00:00'
@@ -34,7 +34,7 @@ def main():
     """
 
 
-    #created = TypeData('entsoe', 'generation_per_type', 'GEN_EE_AGG', loadCSV=False, saveCSV=True)
+    #created = TypeData('nordpool', 'generation_by_type', 'GEN_NP_AGG', loadCSV=False, saveCSV=True)
     # created.printStats()
     # created.cutDataset(start_date='2020-01-01 00:00:00', end_date=NTC_END)
     # created.printStats()
@@ -54,6 +54,73 @@ def main():
     # created.printStats()
     # created.saveCSV()
 
+    #dem_tot = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "DEM_TOT.csv"), index_col=0)
+
+    # network = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables/network', "combined_network.csv"), index_col=0)
+    # dem_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "DEM_TOT.csv"), index_col=0)
+
+    # network.index = pd.to_datetime(network.index, errors='coerce')
+    # dem_df.index = pd.to_datetime(dem_df.index, errors='coerce')
+
+    # network.index.name = 'timestamp'
+    # dem_df.index.name = 'timestamp'
+
+    # network = network.reset_index()
+    # dem_df = dem_df.reset_index()
+
+    # network["month_key"] = pd.to_datetime(network["timestamp"]).dt.to_period("M").dt.to_timestamp()
+    # dem_df["month_key"] = pd.to_datetime(dem_df["timestamp"]).dt.to_period("M").dt.to_timestamp()
+
+    # merged = pd.merge(dem_df, network, on="month_key", how="right")
+
+    # # Drop month_key and reset timestamp as index
+    # merged.drop(columns=["month_key"], inplace=True)
+    # merged = merged.set_index("timestamp_x")
+    # merged.index.name = "timestamp"
+    # merged.index = pd.to_datetime(merged.index)
+    # merged = merged.dropna(subset=["AUS_actual_load"])
+    # merged.to_csv('aa.csv')
+
+    # pop = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables/country', "population.csv"))
+    # area = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables/country', "area.csv"))
+
+    # merged = pd.merge(area, pop, left_on="zoneName", right_on="zone", how='inner')
+    # merged = merged.drop(columns=["zone"])
+    # merged.to_csv('sss.csv')
+
+
+    # dem_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "DEM_TOT.csv"), index_col=0)
+    # country_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables/country', "combined_country.csv"), index_col=0)
+    # area_dict = dict(zip(country_df['zoneName'], country_df['area']))
+    # pop_dict = dict(zip(country_df['zoneName'], country_df['population']))
+
+    # for col in dem_df.columns:
+    #     for country in area_dict:
+    #         if col.startswith(country):
+    #             dem_df[f'{country}_LOAD_PER_AREA'] = dem_df[col] / area_dict[country]
+    #             dem_df[f'{country}_LOAD_PER_PP'] = dem_df[col] / pop_dict[country] * 1000
+    
+    # dem_df.to_csv('ayayay.csv')
+
+
+    # new_df = df[['zoneName', 'area']]
+
+    # print(new_df.info())
+
+    # df1 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "DEM_TOT_AREA_NTWRK.csv"))
+    # df2 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_AGG.csv"))
+
+    # merged_df = pd.merge(df1, df2, how="inner", on="timestamp", suffixes=("", "_dup"))
+    # merged_df = merged_df[[col for col in merged_df.columns if not col.endswith("_dup")]]
+    # #merged_df = merged_df.drop(columns=["timestamp_y"])
+    # merged_df = merged_df.set_index("timestamp")
+    # merged_df.to_csv('aaa.csv')
+
+    # new_df = new_df[~new_df["zoneName"].isin(["BKN", "RMB", "EX_SVK", "EX_HUN"])]
+
+    # print(new_df.info())
+    # new_df.to_csv('upadted.csv')
+
 
 
     """
@@ -63,13 +130,13 @@ def main():
     """
 
 
-    #df = BaseData('GENLOAD_AGG')
+    # df = BaseData('GENLOAD_GNLD_AREA_TIME')
     # df.addTimeFeatures()
     # df.saveCSV()
-    #df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_NTC.csv"), index_col=0)
+    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_GENLOAD_AGG.csv"), index_col=0)
 
 
-    # selected_columns = ['GER_generation_wind_onshore', 'GER_generation_wind_offshore', 'DE_LU_to_CH']
+    # selected_columns = ['GER_INFLEX', 'GER_IEX']
     # new_df = df[selected_columns]
 
     # # Optionally, save the new DataFrame to a new CSV file
@@ -110,37 +177,35 @@ def main():
     # new_df = df[columns_to_keep]
     # new_df.to_csv("filtered_dataframe.csv", index=True)
 
+    #df = BaseData('GENLOAD_AGG_CTRY_RESLOAD')
 
     """
     #*****************************************************************************************************************
     #   MERGER
     #*****************************************************************************************************************
     """
+    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_GNLD.csv"), index_col=0)
+    # df = df.drop(columns=[col for col in df.columns if col.endswith("_actual_load")])
+    # df.to_csv('aaa.csv')
 
 
-    # df1 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "plots_df.csv"), index_col=0)
-    # df2 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
-    # merged = pd.merge(df1, df2, left_index=True, right_index=True, how="outer")
-    # merged.info()
-    # merged.to_csv("updated_dataframe444.csv")
 
-    
-    gen_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_AGG.csv"), index_col=0)
+    gen_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_GNLD_AREA_TIME.csv"), index_col=0)
     gen_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "WEATHER.csv"), index_col=0)
-    dem_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAXBEX.csv"), index_col=0)
-    #dem_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "DEM_NP.csv"), index_col=0)
+    dem_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
+    # # dem_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
 
     common_index = gen_ee.index.intersection(gen_np.index)
     common_index = common_index.intersection(dem_ee.index)
-    # common_index = common_index.intersection(dem_np.index)
+    # # common_index = common_index.intersection(dem_np.index)
 
     gen_ee = gen_ee.loc[common_index]
     gen_np = gen_np.loc[common_index]
     dem_ee = dem_ee.loc[common_index]
-    # dem_np = dem_np.loc[common_index]
+    # # dem_np = dem_np.loc[common_index]
 
     merged_df = pd.concat([gen_ee, gen_np, dem_ee], axis=1)
-    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_GENLOAD_AGG.csv")
+    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BL_NTC_FULL.csv")
     merged_df.to_csv(output_path)
     
 
@@ -170,9 +235,9 @@ def main():
 
 
     #     # Calculate RES_LOAD
-    #     if tot_gen_col in df.columns and inflex_col in df.columns:
+    #     if actual_load_col in df.columns and inflex_col in df.columns:
     #         res_load_col = f"{country}_RES_LOAD"
-    #         df[res_load_col] = df[tot_gen_col] - df[inflex_col]
+    #         df[res_load_col] = df[actual_load_col] - df[inflex_col]
     #         res_load_columns[country] = res_load_col
 
     #         # ✅ RES_LOAD_RATIO = RES_LOAD / actual_load
@@ -182,7 +247,7 @@ def main():
     #         # ✅ RES_LOAD_GRAD = difference (signed) between timesteps
     #         df[f"{country}_RES_LOAD_GRAD"] = df[res_load_col].diff().fillna(0)
 
-    # # Reorder columns
+    # # # Reorder columns
     # df.to_csv("updated_dataframe.csv")
     # print("Updated dataframe saved as 'updated_dataframe4.csv'")
 
@@ -193,32 +258,37 @@ def main():
     """
     # country = "FRA"
 
-    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_NTC.csv"), index_col=0)
+    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_WITH_NTC_GENLOAD_AGG.csv"), index_col=0)
     # df.index = pd.to_datetime(df.index)
     # df_resampled = df.resample('h').mean()
 
+    # dfData = BaseData('BASELINE_MAXBEX_WITH_NTC_GENLOAD_AGG')
 
-    # df_resampled['is_weekend'] = (df_resampled.index.weekday >= 5).astype(int)
-    # columns_of_interest = ["BEL_FRA", "GER_POL", "GER_FRA"]
-    # df_resampled['sum_selected'] = df_resampled[columns_of_interest].sum(axis=1)
+    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_WITH_NTC_GENLOAD_AGG.csv"), index_col=0)
+    # #selected_columns = ['FRA_IEX', 'GER_IEX', 'BEL_IEX', 'GER_FRA', 'GER_BEL', 'BEL_FRA', 'FR_to_ES', 'FR_to_CH', 'DE_LU_to_CH']
+    # selected_columns = ['GER_RES_LOAD_GRAD', 'GER_FRA', 'GER_BEL', 'DE_LU_to_CH']
 
-    # sum_weekday_avg = df_resampled[df_resampled['is_weekend'] == 0]['sum_selected'].mean()
-    # sum_weekend_avg = df_resampled[df_resampled['is_weekend'] == 1]['sum_selected'].mean()
+    # sns.heatmap(df[selected_columns].corr(), annot=True, fmt=".2f", cmap='coolwarm', vmin=-1, vmax=1)
+    # plt.show()
+
 
     # print(f"Weekday Sum Avg: {sum_weekday_avg:.2f}")
     # print(f"Weekend Sum Avg: {sum_weekend_avg:.2f}")
 
     # fig, ax = plt.subplots(figsize=(8, 5))
-    # ax.bar(['Weekday', 'Weekend'], [sum_weekday_avg, sum_weekend_avg], color=['skyblue', 'orange'])
+    # ax.plot(df_resampled['timestamp'], )
     # ax.set_ylabel("Average MAXBEX Cross Border Capacities [MWh]")
     # ax.set_title("Average MAXBEX Cross-Border Capacities \nWeekday vs Weekend")
     # plt.grid(axis='y')
     # plt.tight_layout()
     # plt.show()
+    #plot_cols(df, selected_columns)
 
+
+    enable_plot = False
 
     if enable_plot:
-        plot_cols(df, columns=[], start_date="2015-01-01", end_date="2026-01-01")
+        plot_cols(dfData, columns=selected_columns, start_date="2015-01-01", end_date="2026-01-01")
 
 
 def plot_cols(dataset, columns=None, column_indices=None, start_date=None, end_date=None):

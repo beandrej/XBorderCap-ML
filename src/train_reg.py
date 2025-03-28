@@ -19,18 +19,19 @@ from sklearn.kernel_ridge import KernelRidge
     CONFIG
 ************************************
 """
-TRAINING_SET = "BASELINE_MAXBEX"
 
-TRAIN_SPLIT = 0.8 
-VALID_SPLIT = 0.1
-BATCH_SIZE = 512
+BORDER_TYPE = "MAXBEX"
+TRAINING_SET = "BL_FBMC_TIME"
+MODEL_NAME = "BaseModel"
+
+
+TRAIN_SPLIT = 0.9
+VALID_SPLIT = 0.3
+BATCH_SIZE = 256
 EPOCHS = 100
 WEIGHT_DECAY = 1e-3
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.0001
 
-MODEL_NAME = "BaseModel"
-SPLIT_RATIO = 0.8
-VALID_SPLIT = 0.1
 
 """
 ************************************
@@ -40,14 +41,22 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-
     full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{TRAINING_SET}.csv"), index_col=0)
-    first_target_idx = full_df.columns.get_loc("AUS_CZE")
+    
+
+    # Dataset X & Y has to merged (only use intersecting timestamps), they are separated again here..
+    if BORDER_TYPE == "MAXBEX":
+        first_target_idx = full_df.columns.get_loc("AUS_CZE")
+    elif BORDER_TYPE == "NTC":
+        first_target_idx = full_df.columns.get_loc("AT_to_IT_NORD")
+    else:
+        raise ValueError("Wrong BORDER_TYPE!")
+
 
     X = full_df.iloc[:, :first_target_idx]
     Y = full_df.iloc[:, first_target_idx:]
 
-    split_index = int(len(full_df) * SPLIT_RATIO)
+    split_index = int(len(full_df) * TRAIN_SPLIT)
     val_index = int(split_index * (1 - VALID_SPLIT))
 
     X_train_full = X.iloc[:split_index]
@@ -85,28 +94,31 @@ def main():
     output_dim = Y_train.shape[1]
     model = get_model(MODEL_NAME, input_dim, output_dim).to(device)
 
-    criterion = nn.HuberLoss()
-    optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
-    print("Model parameters:\n", f"Train split: {SPLIT_RATIO}\n", f"Validation split: {VALID_SPLIT}\n",
-        f"Batch size: {BATCH_SIZE}\n", f"Learning rate: {config.LEARNING_RATE}")
-
+    print("Model parameters:\n", f"Train split: {TRAIN_SPLIT}\n", f"Validation split: {VALID_SPLIT}\n",
+        f"Batch size: {BATCH_SIZE}\n", f"Learning rate: {LEARNING_RATE}")
 
     train_losses = []
     val_losses = []
-    r2_scores = []
-    mae_scores = []
+    train_r2_scores = []
+    train_mae_scores = []
+    val_r2_scores = []
+    val_mae_scores = []
 
     for epoch in range(EPOCHS):
         model.train()
         epoch_loss = 0  
+        y_train_true_list = []
+        y_train_pred_list = []
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS}", leave=True)
         
         for X_batch, y_batch in train_loader:
             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
             optimizer.zero_grad()
-
+            
             if MODEL_NAME == "lstm":
                 X_batch = X_batch.view(X_batch.shape[0], 1, X_batch.shape[1])
 
@@ -116,13 +128,31 @@ def main():
             optimizer.step()
             epoch_loss += loss.item()
 
+            y_train_pred = predictions.detach().cpu().numpy()
+            y_train_true = y_batch.detach().cpu().numpy()
+
+            y_train_pred = Y_scaler.inverse_transform(y_train_pred)
+            y_train_true = Y_scaler.inverse_transform(y_train_true)
+
+            y_train_pred_list.append(y_train_pred)
+            y_train_true_list.append(y_train_true)
+
             progress_bar.set_postfix(loss=loss.item())
             progress_bar.update(1)
+        
+        y_train_pred_full = np.vstack(y_train_pred_list)
+        y_train_true_full = np.vstack(y_train_true_list)
+
+        train_r2 = r2_score(y_train_true_full, y_train_pred_full)
+        train_mae = mean_absolute_error(y_train_true_full, y_train_pred_full)
+
+        train_r2_scores.append(train_r2)
+        train_mae_scores.append(train_mae)
 
         model.eval()
         val_loss = 0
-        y_true_list = []
-        y_pred_list = []
+        y_val_true_list = []
+        y_val_pred_list = []
         with torch.no_grad():
             for X_batch, y_batch in val_loader:
                 X_batch, y_batch = X_batch.to(device), y_batch.to(device)
@@ -140,31 +170,34 @@ def main():
                 y_pred = Y_scaler.inverse_transform(y_pred)
                 y_true = Y_scaler.inverse_transform(y_batch)
 
-                y_pred_list.append(y_pred)
-                y_true_list.append(y_true)    
+                y_val_pred_list.append(y_pred)
+                y_val_true_list.append(y_true)    
 
-        y_pred_full = np.vstack(y_pred_list)
-        y_true_full = np.vstack(y_true_list)
+        y_pred_full = np.vstack(y_val_pred_list)
+        y_true_full = np.vstack(y_val_true_list)
 
-        r2 = r2_score(y_true, y_pred)
-        mae = mean_absolute_error(y_true, y_pred)
+        val_r2 = r2_score(y_true_full, y_pred_full)
+        val_mae = mean_absolute_error(y_true_full, y_pred_full)
 
         train_losses.append(epoch_loss / len(train_loader))
         val_losses.append(val_loss / len(val_loader))
-        r2_scores.append(r2)
-        mae_scores.append(mae)
+        val_r2_scores.append(val_r2)
+        val_mae_scores.append(val_mae)
 
         if epoch % 2 == 0:
-            print(f"Epoch {epoch+1}/{config.EPOCHS} | Train Loss (MSE): {train_losses[-1]:.2f} | Val Loss (MSE): {val_losses[-1]:.2f}, R²: {r2:.2f}, MAE: {mae:.2f}")
+            print(f"Epoch {epoch+1}/{EPOCHS} | Train Loss (MSE): {train_losses[-1]:.2f} | Val Loss (MSE): {val_losses[-1]:.2f}, Train-R²: {train_r2:.2f}, Val-R²: {val_r2:.2f}, Train-MAE: {train_mae:.2f}, Val-MAE: {val_mae:.2f}")
         scheduler.step()
 
-    epochs_list = list(range(1, config.EPOCHS + 1))
+    epochs_list = list(range(1, EPOCHS + 1))
     metrics_df = pd.DataFrame({
         'epoch': epochs_list,
         'train_loss': train_losses,
         'val_loss': val_losses,
-        'r2': r2_scores,
-        'mae': mae_scores
+        'train_r2': train_r2_scores,
+        'val_r2' : val_r2_scores,
+        'train_mae': train_mae_scores,
+        'val_mae' : val_mae_scores
+        
     })
 
     summary_data = {
@@ -177,14 +210,15 @@ def main():
         'Epochs': EPOCHS,
         'Train loss': round(train_losses[-1], 2),
         'Val loss': round(val_losses[-1], 2),
-        'R2-Score': round(r2_scores[-1], 2),
-        'MAE': round(mae_scores[-1], 2)
+        'Train-R2-Score': round(train_r2_scores[-1], 2),
+        'Val-R2-Score' : round(val_r2_scores[-1], 2),
+        'Train-MAE': round(train_mae_scores[-1], 3),
+        'Val-MAE' : round(val_mae_scores[-1], 3)
     }
 
     summary_df = pd.DataFrame([summary_data])
 
-    summaryXLSX_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', 
-                            f"00_summary.xlsx")
+    summaryXLSX_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', "00_summary.xlsx")
 
     os.makedirs(os.path.dirname(summaryXLSX_path), exist_ok=True)
 
@@ -193,6 +227,7 @@ def main():
         combined_df = pd.concat([existing_df, summary_df], ignore_index=True)
     else:
         combined_df = summary_df
+
     combined_df.to_excel(summaryXLSX_path, index=False)
     print(f"Updated summary saved to: {summaryXLSX_path}")
 

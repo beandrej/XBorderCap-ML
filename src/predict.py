@@ -12,13 +12,21 @@ import train_reg
 
 MODEL_NAME = train_reg.MODEL_NAME
 SPLIT_RATIO = train_reg.TRAIN_SPLIT
+BORDER_TYPE = train_reg.BORDER_TYPE
 
-model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_params', f"{train_reg.MODEL_NAME}.pth")
+model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_params', f"{MODEL_NAME}.pth")
 pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{train_reg.TRAINING_SET}.csv")
 
 full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{train_reg.TRAINING_SET}.csv"), index_col=0)
-first_target_idx = full_df.columns.get_loc("AUS_CZE")
-split_index = int(len(full_df) * SPLIT_RATIO)
+
+
+# Dataset X & Y has to merged (only use intersecting timestamps), they are separated again here..
+if BORDER_TYPE == "MAXBEX":
+    first_target_idx = full_df.columns.get_loc("AUS_CZE")
+elif BORDER_TYPE == "NTC":
+    first_target_idx = full_df.columns.get_loc("AT_to_IT_NORD")
+else:
+    raise ValueError("Wrong BORDER_TYPE!")
 
 X = full_df.iloc[:, :first_target_idx]
 Y = full_df.iloc[:, first_target_idx:]

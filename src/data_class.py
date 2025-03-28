@@ -250,9 +250,9 @@ class TypeData(BaseData):
         self.data.drop(columns=nordic_data, inplace=True)
 
     def agg_gen(self):
-
         base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables', self.source, self.type)
         merged_df = pd.DataFrame()
+
         for file in os.listdir(base_path):
             if file.endswith(".csv"):
                 file_path = os.path.join(base_path, file)
@@ -285,18 +285,21 @@ class TypeData(BaseData):
                         else:
                             grouped_data[f"{country}_OTHER"] += df[col].fillna(0)
 
-                country_df = pd.DataFrame(grouped_data, index=df.index)
-                country_df[f"{country}_TOT_GEN"] = (
-                    country_df[f"{country}_INFLEX"] +
-                    country_df[f"{country}_FLEX"] +
-                    country_df[f"{country}_NUC"] +
-                    country_df[f"{country}_OTHER"]
+                grouped_df = pd.DataFrame(grouped_data, index=df.index)
+                grouped_df[f"{country}_TOT_GEN"] = (
+                    grouped_df[f"{country}_INFLEX"] +
+                    grouped_df[f"{country}_FLEX"] +
+                    grouped_df[f"{country}_NUC"] +
+                    grouped_df[f"{country}_OTHER"]
                 )
 
-                if merged_df is None:
-                    merged_df = country_df 
-                else:
-                    merged_df = merged_df.merge(country_df, left_index=True, right_index=True, how="outer")  
+                #full_df = pd.concat([df, grouped_df], axis=1)
+
+            if merged_df.empty:
+                merged_df = grouped_df
+            else:
+                merged_df = merged_df.merge(grouped_df, left_index=True, right_index=True, how="outer")
+            
         return merged_df
 
     def residual_demand(self):

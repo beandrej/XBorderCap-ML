@@ -9,35 +9,40 @@ from plotter_class import *
 
 
 # Paths
-pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}.csv")
-fig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       'results/plots/pred/baseModel', f"{MODEL_NAME}_{TRAINING_SET}.png")
-y_true_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                   '../prep_data', f"{TRAINING_SET}.csv")
+pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}.csv")
+y_true_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{TRAINING_SET}.csv")
+nn_metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', f"metrics_{MODEL_NAME}_{TRAINING_SET}.csv")
+metrics_save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/plots/model_metrics', f"{MODEL_NAME}_{TRAINING_SET}.png")
 
-borders = ["AUS_CZE", "CZE_AUS", "AUS_GER", "GER_AUS","BEL_FRA","FRA_BEL","BEL_GER","GER_BEL","BEL_NET","NET_BEL","CZE_GER",
-          "CZE_POL","POL_CZE","GER_NET","NET_GER","GER_POL","POL_GER","GER_FRA","FRA_GER"]
+MAXBEX_BORDERS = ["AUS_CZE", "CZE_AUS", "AUS_GER", "GER_AUS","BEL_FRA","FRA_BEL","BEL_GER","GER_BEL","BEL_NET","NET_BEL","CZE_GER",
+                "CZE_POL","POL_CZE","GER_NET","NET_GER","GER_POL","POL_GER","GER_FRA","FRA_GER"]
 
-plotObj = PltCombinedBLDF(pred_path, y_true_path, "AUS_CZE")
+NTC_BORDERS = []
 
-for border in borders:
+PLOT_BORDER = False
+PLOT_METRIC = False
 
-    fig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        'results/plots/pred/baseModel', f"{border}_{MODEL_NAME}_{TRAINING_SET}.png")
-    plotObj.plot_border(border, fig_path, save_plot=True, show_plot=False)
+if PLOT_BORDER:
+    plotObj = PredictionPlot(pred_path, y_true_path, "AUS_CZE")
 
-bl_borders = PltCombinedBLDF(pred_path, y_true_path, "AUS_CZE", fig_path)
-bl_borders.plot_border("AUS_CZE", save_plot=True)
+    for border in MAXBEX_BORDERS:
 
-# nn_metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-#                         'results/model_metrics', f"metrics_{MODEL_NAME}_{TRAINING_SET}.csv")
-# metrics_save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-#                        'results/plots/model_metrics', f"{MODEL_NAME}_{TRAINING_SET}.png")
+        fig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            'results/plots/pred/baseModel', f"{border}_{MODEL_NAME}_{TRAINING_SET}.png")
+        plotObj.plot_border(border, fig_path, save_plot=True, show_plot=False)
 
-# nn_metrics = PltModelMetric(nn_metrics_path, metrics_save_path)
-# nn_metrics.plotR2(save_plot=True)
-# nn_metrics.plotTrainValLoss(save_plot=True)
+if PLOT_METRIC:
+
+    metrics_save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/plots/model_metrics', f"{MODEL_NAME}_{TRAINING_SET}.png")
+
+    nn_metrics = SingleMetricPlot(MODEL_NAME, TRAINING_SET, nn_metrics_path, metrics_save_path)
+    nn_metrics.plotR2(save_plot=True)
+    nn_metrics.plotTrainValLoss(save_plot=True)
+
+
+compareMetrix = CompareDFMetricsPlot(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics'), MODEL_NAME)
+compareMetrix.compareValR2()
+compareMetrix.compareTrainR2()
 
 # # Load actual Y data
 # full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)),

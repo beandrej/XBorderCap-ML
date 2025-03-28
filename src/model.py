@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import config
 
-class Reg(nn.Module):
+class BaseModel(nn.Module):
     def __init__(self, input_dim, output_dim):
-        super(Reg, self).__init__()
+        super(BaseModel, self).__init__()
+        
         self.linear = nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
@@ -103,7 +104,7 @@ class LSTM(nn.Module):
 def get_model(model_name, input_dim, output_dim):
     print(f"\nUsing model: {model_name}")
     if model_name == "BaseModel":
-        return Reg(input_dim, output_dim)
+        return BaseModel(input_dim, output_dim)
     elif model_name == "nn":
         return Net(input_dim, output_dim)
     elif model_name == "lstm":
