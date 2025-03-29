@@ -17,7 +17,7 @@ TRAINING_SET = 'BL_FBMC_FULL'
 
 SPLIT_RATIO = train_reg.TRAIN_SPLIT
 
-model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}.pth")
+model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}.pth")
 pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.csv")
 
 full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{train_reg.TRAINING_SET}.csv"), index_col=0)

@@ -21,6 +21,9 @@ from sklearn.ensemble import ExtraTreesRegressor
 ************************************
 """
 LOOP_TRAINING = True
+BORDER_TYPE = "MAXBEX"
+
+
 
 DATASET_LOOP = ["BL_FBMC", "BL_FBMC_TIME", "BL_FBMC_CTRY", "BL_FBMC_GNLD", "BL_FBMC_FULL"]
 MODEL_LOOP = ["BaseModel"]
@@ -28,7 +31,6 @@ CRITERIA_LOOP = [
     (nn.MSELoss, "MSELoss")
 ]
 
-BORDER_TYPE = "MAXBEX"
 TRAINING_SET = "BL_FBMC_FULL"
 MODEL_NAME = "BaseModel"
 CRITERION = nn.L1Loss
@@ -372,11 +374,11 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
     combined_df.to_excel(summaryXLSX_path, index=False)
     print(f"Updated summary saved to: {summaryXLSX_path}")
 
-    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{MODEL_NAME}', f"metrics_{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.csv")
+    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f"metrics_{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.csv")
     metrics_df.to_csv(csv_path, index=False)
     print(f"Metrics saved to: {csv_path}")
 
-    torch_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.pth")
+    torch_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.pth")
     torch.save(model.state_dict(), torch_model_path)
     print(f"Model saved at: {torch_model_path}")
 
