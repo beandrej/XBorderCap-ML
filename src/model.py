@@ -96,13 +96,17 @@ class LSTM(nn.Module):
         return out
 
 class HybridOutputMLP(nn.Module):
-    def __init__(self, input_dim, cls_dims, reg_count, hidden_dim=128):
+    def __init__(self, input_dim, cls_dims, reg_count, hidden_dim=64):
         super().__init__()
         self.shared = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
+            nn.Dropout(0.3),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU()
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.3)
         )
         self.cls_heads = nn.ModuleList([nn.Linear(hidden_dim, n) for n in cls_dims])
         self.reg_heads = nn.ModuleList([nn.Linear(hidden_dim, 1) for _ in range(reg_count)])

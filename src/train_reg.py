@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 import torch.nn as nn
 import matplotlib.pyplot as plt
-import openpyxl
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader, Dataset
 from sklearn.preprocessing import StandardScaler
@@ -21,18 +20,18 @@ from sklearn.ensemble import ExtraTreesRegressor
 ************************************
 """
 LOOP_TRAINING = True
-BORDER_TYPE = "MAXBEX"
+BORDER_TYPE = "NTC"
 
-
-
-DATASET_LOOP = ["BL_FBMC", "BL_FBMC_TIME", "BL_FBMC_CTRY", "BL_FBMC_GNLD", "BL_FBMC_FULL"]
-MODEL_LOOP = ["BaseModel"]
+DATASET_LOOP = ["BL_NTC_FULL"]
+MODEL_LOOP = ["LSTM"]
 CRITERIA_LOOP = [
-    (nn.MSELoss, "MSELoss")
+    (nn.MSELoss, "MSELoss"),
+    (nn.L1Loss, "L1Loss"),
+    (nn.SmoothL1Loss, "SmoothL1Loss")
 ]
 
-TRAINING_SET = "BL_FBMC_FULL"
-MODEL_NAME = "BaseModel"
+TRAINING_SET = "BL_NTC_FULL"
+MODEL_NAME = "LSTM"
 CRITERION = nn.L1Loss
 
 TRAIN_SPLIT = 0.9
@@ -47,9 +46,11 @@ SEQ_LEN = 24*7
 USE_RF_ONLY = False
 MAKE_PLOTS = True
 
+
 """
 ************************************
 """
+
 
 class SequenceDataset(Dataset):
     def __init__(self, X, Y, seq_len):
@@ -102,8 +103,8 @@ def RFAnalysis():
 def analyze_feature_importance(X_train, Y_train, feature_names, dataset, top_n=30, saveFig=True, showPlot=False):
     rf = ExtraTreesRegressor(
         n_estimators=500,     
-        max_depth=50,         
-        min_samples_split=10, 
+        max_depth=None,         
+        min_samples_split=5, 
         max_features='sqrt',  
         n_jobs=-1,            
         random_state=SEED     
@@ -154,9 +155,9 @@ def plotR2(metrics_df, dataset, model, loss, saveFig=True, showPlot=False):
     if saveFig: plt.savefig(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/plots/training/r2', f"{model}_{dataset}_{loss}_R2Score.png"), dpi=300, bbox_inches='tight')
     if showPlot: plt.show()     
 
-def buildTrainValDataset():
-    df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{TRAINING_SET}.csv"), index_col=0)
-    print(f"\n USING DATASET: {TRAINING_SET}\n")
+def buildTrainValDataset(dataset):
+    df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{dataset}.csv"), index_col=0)
+    print(f"\n USING DATASET: {dataset}\n")
 
     # Dataset X & Y has to merged (only use intersecting timestamps), they are separated again here..
     if BORDER_TYPE == "MAXBEX":
@@ -205,7 +206,7 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-    X_train, Y_train, X_val, Y_val = buildTrainValDataset()
+    X_train, Y_train, X_val, Y_val = buildTrainValDataset(TRAINING_SET)
 
     X_scaler = StandardScaler()
     Y_scaler = StandardScaler()
@@ -238,7 +239,7 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
     output_dim = sample_Y.shape[0]
 
     model = get_model(MODEL_NAME, input_dim, output_dim).to(device)
-
+    
     criterion = CRITERION_CLASS()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
@@ -319,7 +320,7 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
 
         scheduler.step(val_loss)
 
-        if (epoch+1) % 20 == 0 or epoch == 0:
+        if (epoch+1) % 10 == 0 or epoch == 0:
             print(f"Epoch {epoch+1}/{EPOCHS} | Train {criterion.__class__.__name__}: {train_losses[-1]:.2f} | Val {criterion.__class__.__name__}: {val_losses[-1]:.2f} | Train-R²: {train_r2:.2f} | Val-R²: {val_r2:.2f} | Train-MAE: {train_mae:.2f} | Val-MAE: {val_mae:.2f}")
 
 
@@ -374,11 +375,15 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
     combined_df.to_excel(summaryXLSX_path, index=False)
     print(f"Updated summary saved to: {summaryXLSX_path}")
 
-    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f"metrics_{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.csv")
+    csv_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}')
+    csv_path = os.path.join(csv_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.csv")
+    os.makedirs(csv_path_base_path, exist_ok=True)
     metrics_df.to_csv(csv_path, index=False)
     print(f"Metrics saved to: {csv_path}")
 
-    torch_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.pth")
+    torch_model_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}')
+    torch_model_path = os.path.join(torch_model_base_path, f"{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.pth")
+    os.makedirs(torch_model_base_path, exist_ok=True)
     torch.save(model.state_dict(), torch_model_path)
     print(f"Model saved at: {torch_model_path}")
 

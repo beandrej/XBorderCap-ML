@@ -242,30 +242,26 @@ def main():
     """
     # country = "FRA"
 
-    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_WITH_NTC_GENLOAD_AGG.csv"), index_col=0)
-    # df.index = pd.to_datetime(df.index)
-    # df_resampled = df.resample('h').mean()
+    df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
+    df.index = pd.to_datetime(df.index)
+    df_resampled = df.resample('h').mean()
 
-    # dfData = BaseData('BASELINE_MAXBEX_WITH_NTC_GENLOAD_AGG')
+    dfData = BaseData('BASELINE_MAXBEX_WITH_NTC_GENLOAD_AGG')
 
-    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_WITH_NTC_GENLOAD_AGG.csv"), index_col=0)
-    # #selected_columns = ['FRA_IEX', 'GER_IEX', 'BEL_IEX', 'GER_FRA', 'GER_BEL', 'BEL_FRA', 'FR_to_ES', 'FR_to_CH', 'DE_LU_to_CH']
-    # selected_columns = ['GER_RES_LOAD_GRAD', 'GER_FRA', 'GER_BEL', 'DE_LU_to_CH']
+    df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_WITH_NTC_GENLOAD_AGG.csv"), index_col=0)
+    #selected_columns = ['FRA_IEX', 'GER_IEX', 'BEL_IEX', 'GER_FRA', 'GER_BEL', 'BEL_FRA', 'FR_to_ES', 'FR_to_CH', 'DE_LU_to_CH']
+    selected_columns = ['GER_RES_LOAD_GRAD', 'GER_FRA', 'GER_BEL', 'DE_LU_to_CH']
 
-    # sns.heatmap(df[selected_columns].corr(), annot=True, fmt=".2f", cmap='coolwarm', vmin=-1, vmax=1)
-    # plt.show()
+    sns.heatmap(df[selected_columns].corr(), annot=True, fmt=".2f", cmap='coolwarm', vmin=-1, vmax=1)
+    plt.show()
 
-
-    # print(f"Weekday Sum Avg: {sum_weekday_avg:.2f}")
-    # print(f"Weekend Sum Avg: {sum_weekend_avg:.2f}")
-
-    # fig, ax = plt.subplots(figsize=(8, 5))
-    # ax.plot(df_resampled['timestamp'], )
-    # ax.set_ylabel("Average MAXBEX Cross Border Capacities [MWh]")
-    # ax.set_title("Average MAXBEX Cross-Border Capacities \nWeekday vs Weekend")
-    # plt.grid(axis='y')
-    # plt.tight_layout()
-    # plt.show()
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(df_resampled['timestamp'], )
+    ax.set_ylabel("Average MAXBEX Cross Border Capacities [MWh]")
+    ax.set_title("Average MAXBEX Cross-Border Capacities \nWeekday vs Weekend")
+    plt.grid(axis='y')
+    plt.tight_layout()
+    plt.show()
     #plot_cols(df, selected_columns)
 
 

@@ -8,10 +8,10 @@ import data_loader
 from plotter_class import *
 from train_reg import *
 
-MODEL_NAME = 'BaseModel'
+MODEL_NAME = 'Hybrid'
 TRAINING_SET = 'BL_NTC_FULL'
 BORDER_TYPE = 'NTC'
-LOSS = 'MSELoss'
+LOSS = 'Hybrid'
 
 
 # Paths
