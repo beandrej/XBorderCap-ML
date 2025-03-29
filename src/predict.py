@@ -10,12 +10,15 @@ import config
 import data_loader
 import train_reg
 
-MODEL_NAME = train_reg.MODEL_NAME
-SPLIT_RATIO = train_reg.TRAIN_SPLIT
-BORDER_TYPE = train_reg.BORDER_TYPE
+MODEL_NAME = 'BaseModel'
+BORDER_TYPE = 'MAXBEX'
+LOSS = 'MSELoss'
+TRAINING_SET = 'BL_FBMC_FULL'
 
-model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_params', f"{MODEL_NAME}.pth")
-pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{train_reg.TRAINING_SET}.csv")
+SPLIT_RATIO = train_reg.TRAIN_SPLIT
+
+model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}.pth")
+pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.csv")
 
 full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{train_reg.TRAINING_SET}.csv"), index_col=0)
 

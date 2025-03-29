@@ -87,23 +87,32 @@ class CompareDFMetricsPlot():
                 self.metrics_files[dataset_name] = f
 
     def compareValR2(self, save_path=None, save_plot=False, grid_on=True, show_plot=True):
-        train_r2_scores = {}
         val_r2_scores = {}
 
         for dataset_name, filename in self.metrics_files.items():
             df = pd.read_csv(os.path.join(self.dir, filename))
             val_r2_scores[dataset_name] = df["val_r2"].tolist()
-        
-        plt.figure(figsize=(10, 6))
 
-        for dataset, r2_list in val_r2_scores.items():
-            plt.plot(r2_list, label=f"{dataset}")
+        # Extract unique dataset bases and assign colors
+        dataset_base_names = sorted(set(name.rsplit('_', 1)[0] for name in val_r2_scores))
+        loss_types = sorted(set(name.rsplit('_', 1)[-1] for name in val_r2_scores))
 
+        color_map = {name: color for name, color in zip(dataset_base_names, plt.cm.tab10.colors)}
+        line_styles = ['-', '--', '-.', ':']  # Up to 4 line styles
+        line_style_map = {loss: style for loss, style in zip(loss_types, line_styles)}
+
+        plt.figure(figsize=(12, 7))
+
+        for full_name, r2_list in val_r2_scores.items():
+            dataset_base, loss_type = full_name.rsplit('_', 1)
+            color = color_map.get(dataset_base, 'gray')
+            linestyle = line_style_map.get(loss_type, '-')
+            plt.plot(r2_list, label=full_name, color=color, linestyle=linestyle)
 
         plt.title(f"Validation R² over Epochs ({self.model})")
         plt.xlabel("Epoch")
         plt.ylabel("R² Score")
-        plt.legend(title="Dataset")
+        plt.legend(title="Dataset + Loss", bbox_to_anchor=(1.05, 1), loc='upper left')
         if grid_on:
             plt.grid(True)
         plt.tight_layout()
@@ -117,22 +126,32 @@ class CompareDFMetricsPlot():
 
     def compareTrainR2(self, save_path=None, save_plot=False, grid_on=True, show_plot=True):
         train_r2_scores = {}
-        val_r2_scores = {}
 
         for dataset_name, filename in self.metrics_files.items():
             df = pd.read_csv(os.path.join(self.dir, filename))
             train_r2_scores[dataset_name] = df["train_r2"].tolist()
-        
-        plt.figure(figsize=(10, 6))
 
-        for dataset, r2_list in train_r2_scores.items():
-            plt.plot(r2_list, label=f"{dataset}")
+        # Extract base dataset names and loss types
+        dataset_base_names = sorted(set(name.rsplit('_', 1)[0] for name in train_r2_scores))
+        loss_types = sorted(set(name.rsplit('_', 1)[-1] for name in train_r2_scores))
 
+        # Assign consistent colors and line styles
+        color_map = {name: color for name, color in zip(dataset_base_names, plt.cm.tab10.colors)}
+        line_styles = ['-', '--', '-.', ':']
+        line_style_map = {loss: style for loss, style in zip(loss_types, line_styles)}
+
+        plt.figure(figsize=(12, 7))
+
+        for full_name, r2_list in train_r2_scores.items():
+            dataset_base, loss_type = full_name.rsplit('_', 1)
+            color = color_map.get(dataset_base, 'gray')
+            linestyle = line_style_map.get(loss_type, '-')
+            plt.plot(r2_list, label=full_name, color=color, linestyle=linestyle)
 
         plt.title(f"Training R² over Epochs ({self.model})")
         plt.xlabel("Epoch")
         plt.ylabel("R² Score")
-        plt.legend(title="Dataset")
+        plt.legend(title="Dataset + Loss", bbox_to_anchor=(1.05, 1), loc='upper left')
         if grid_on:
             plt.grid(True)
         plt.tight_layout()

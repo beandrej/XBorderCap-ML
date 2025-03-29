@@ -4,22 +4,6 @@ import numpy as np
 from data_class import *
 import seaborn as sns
 
-# TODO JOIN TARGET DF WITH FEATURE DF TO PLOT CORR
-
-DATASET_NAME = 'BASELINE'
-
-# X-BorderSet
-COUNTRY1 = 'AUS'
-COUNTRY2 = 'SWI'
-DOMAIN = 'maxbex'
-
-# TypeSet
-SOURCE = 'entsoe'
-DATATYPE = 'demand'
-
-
-
-
 NTC_START = '2019-01-01 00:00:00'
 NTC_END = '2024-12-10 23:00:00'
 
@@ -190,23 +174,23 @@ def main():
 
 
 
-    gen_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_GNLD_AREA_TIME.csv"), index_col=0)
-    gen_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "WEATHER.csv"), index_col=0)
-    dem_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
-    # # dem_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
+    # gen_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_GNLD_AREA_TIME.csv"), index_col=0)
+    # gen_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "WEATHER.csv"), index_col=0)
+    # dem_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
+    # # # dem_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
 
-    common_index = gen_ee.index.intersection(gen_np.index)
-    common_index = common_index.intersection(dem_ee.index)
-    # # common_index = common_index.intersection(dem_np.index)
+    # common_index = gen_ee.index.intersection(gen_np.index)
+    # common_index = common_index.intersection(dem_ee.index)
+    # # # common_index = common_index.intersection(dem_np.index)
 
-    gen_ee = gen_ee.loc[common_index]
-    gen_np = gen_np.loc[common_index]
-    dem_ee = dem_ee.loc[common_index]
-    # # dem_np = dem_np.loc[common_index]
+    # gen_ee = gen_ee.loc[common_index]
+    # gen_np = gen_np.loc[common_index]
+    # dem_ee = dem_ee.loc[common_index]
+    # # # dem_np = dem_np.loc[common_index]
 
-    merged_df = pd.concat([gen_ee, gen_np, dem_ee], axis=1)
-    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BL_NTC_FULL.csv")
-    merged_df.to_csv(output_path)
+    # merged_df = pd.concat([gen_ee, gen_np, dem_ee], axis=1)
+    # output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BL_NTC_FULL.csv")
+    # merged_df.to_csv(output_path)
     
 
     """

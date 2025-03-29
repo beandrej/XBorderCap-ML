@@ -1,157 +1,357 @@
 import os
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from tqdm import tqdm
-import pandas as pd
+import random
 import numpy as np
-import config
-from sklearn.metrics import accuracy_score, classification_report
+import pandas as pd
+import torch.nn as nn
+import matplotlib.pyplot as plt
+import openpyxl
+import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader, Dataset
+from sklearn.preprocessing import StandardScaler
+from model import get_model
 from sklearn.metrics import r2_score, mean_absolute_error
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import ExtraTreesRegressor
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
 
-df_to_load = "BASELINE_NTC"
-SPLIT_RATIO = config.TRAIN_SPLIT
-VALID_SPLIT = config.VALID_SPLIT
+"""
+************************************
+    CONFIG
+************************************
+"""
 
-# Load Data
-full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{df_to_load}.csv"), index_col=0)
+BORDER_TYPE = "MAXBEX"
+#TRAINING_SET = "BL_FBMC"
+#MODEL_NAME = "BaseModel"
 
-# Identify feature and target columns
-first_target_idx = full_df.columns.get_loc("AT_to_IT_NORD")  # Adjust to first border col
-features = full_df.iloc[:, :first_target_idx]
-targets = full_df.iloc[:, first_target_idx:]
 
-borders = targets.columns.tolist()
+TRAIN_SPLIT = 0.9
+VALID_SPLIT = 0.15
+BATCH_SIZE = 256
+EPOCHS = 100
+WEIGHT_DECAY = 1e-3
+LEARNING_RATE = 3e-4
+SEED = 42
+SEQ_LEN = 24*7
 
-# LabelEncode each border separately
-label_encoders = {}
-border_class_counts = {}
-for border in borders:
-    le = LabelEncoder()
-    targets[border] = le.fit_transform(targets[border])
-    label_encoders[border] = le
-    border_class_counts[border] = len(le.classes_)
-print(f"Borders and class counts: {border_class_counts}")
+USE_RF_ONLY = False
+MAKE_PLOTS = True
 
-# Train / Validation Split
-split_index = int(len(full_df) * SPLIT_RATIO)
-val_index = int(split_index * (1 - VALID_SPLIT))
+"""
+************************************
+"""
 
-X_train_full = features.iloc[:split_index]
-Y_train_full = targets.iloc[:split_index]
+class SequenceDataset(Dataset):
+    def __init__(self, X, Y, seq_len):
+        """
+        Args:
+            X: np.ndarray or torch.Tensor of shape [time_steps, num_features]
+            Y: np.ndarray or torch.Tensor of shape [time_steps, num_targets]
+            seq_len: int, number of time steps per input sequence
+        """
+        assert len(X) == len(Y), "X and Y must have the same number of time steps"
+        self.X = torch.tensor(X, dtype=torch.float32) if not torch.is_tensor(X) else X
+        self.Y = torch.tensor(Y, dtype=torch.float32) if not torch.is_tensor(Y) else Y
+        self.seq_len = seq_len
 
-X_train = X_train_full.iloc[:val_index]
-Y_train = Y_train_full.iloc[:val_index]
+    def __len__(self):
+        return len(self.X) - self.seq_len
 
-X_val = X_train_full.iloc[val_index:]
-Y_val = Y_train_full.iloc[val_index:]
+    def __getitem__(self, idx):
+        x_seq = self.X[idx : idx + self.seq_len]               # shape: [seq_len, num_features]
+        y_target = self.Y[idx + self.seq_len]                  # shape: [num_targets]
+        return x_seq, y_target
 
-# Feature Scaling
-scaler = StandardScaler()
-X_train = scaler.fit_transform(X_train)
-X_val = scaler.transform(X_val)
+def analyze_feature_importance(X_train, Y_train, feature_names, dataset, top_n=30, saveFig=True, showPlot=False):
+    rf = ExtraTreesRegressor(
+        n_estimators=500,     
+        max_depth=50,         
+        min_samples_split=10, 
+        max_features='sqrt',  
+        n_jobs=-1,            
+        random_state=SEED     
+    )
+    rf.fit(X_train, Y_train)
+    importances = rf.feature_importances_
+    
+    feature_importance_df = pd.DataFrame({
+        'feature': feature_names,
+        'importance': importances
+    }).sort_values(by='importance', ascending=False)
 
-# Torch Datasets
-train_dataset = TensorDataset(torch.tensor(X_train, dtype=torch.float32),
-                              torch.tensor(Y_train.values, dtype=torch.long))
-val_dataset = TensorDataset(torch.tensor(X_val, dtype=torch.float32),
-                            torch.tensor(Y_val.values, dtype=torch.long))
+    print("Top features:\n", feature_importance_df.head(top_n))
 
-train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
+    plt.figure(figsize=(12, 6))
+    top_features = feature_importance_df.head(top_n)
+    plt.barh(top_features['feature'][::-1], top_features['importance'][::-1])
+    plt.xlabel('Importance')
+    plt.title('Top Feature Importances from Random Forest')
+    plt.tight_layout()
+    if saveFig: plt.savefig(os.path.join(os.path.dirname(os.path.abspath(__file__)), '/results/plots/dataset_metrics_RF', f"RF_{dataset}_weights.png", dpi=300, bbox_inches='tight'))
+    if showPlot: plt.show()
+        
 
-# Multi-Head Model
-class MultiBorderClassifier(nn.Module):
-    def __init__(self, input_dim, border_class_counts):
-        super().__init__()
-        self.shared = nn.Sequential(
-            nn.Linear(input_dim, 512),
-            nn.ReLU(),
-            nn.BatchNorm1d(512),
-            nn.Dropout(config.DROPOUT_NN),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.BatchNorm1d(256),
-            nn.Dropout(config.DROPOUT_NN)
-        )
-        self.heads = nn.ModuleDict({
-            border: nn.Linear(256, num_classes)
-            for border, num_classes in border_class_counts.items()
-        })
+    return feature_importance_df
 
-    def forward(self, x):
-        shared_out = self.shared(x)
-        outputs = {border: head(shared_out) for border, head in self.heads.items()}
-        return outputs
+def plotTrainValLoss(metrics_df, loss, dataset, model, saveFig=True, showPlot=False):
+    fig, ax = plt.subplots(figsize=(14, 6))
+    ax.plot(metrics_df["epoch"], metrics_df["train_loss"], label="Training Loss", color="blue")
+    ax.plot(metrics_df["epoch"], metrics_df["val_loss"], label="Validation Loss", color="orange")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel(f"Loss {loss}")
+    ax.set_title(f"{loss} of Training vs Validation loss of {model} on {dataset}")
+    ax.legend()
+    ax.grid()
+    if saveFig: plt.savefig(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/plots/training/losses', f"{model}_{dataset}_{loss}_TrainValLoss.png"), dpi=300, bbox_inches='tight') 
+    if showPlot: plt.show()
 
-# Initialize model
-input_dim = X_train.shape[1]
-model = MultiBorderClassifier(input_dim, border_class_counts).to(device)
-optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
-criterion = nn.CrossEntropyLoss()
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+def plotR2(metrics_df, dataset, model, loss, saveFig=True, showPlot=False):
+    fig, ax = plt.subplots(figsize=(14, 6))
+    ax.plot(metrics_df["epoch"], metrics_df["train_r2"], label="Training R2-Score", color="blue")
+    ax.plot(metrics_df["epoch"], metrics_df["val_r2"], label="Validation R2-Score", color="orange")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("R2-Score")
+    ax.set_title(f"Training and Validation R2-Score of {model} on {dataset}")
+    ax.legend()
+    ax.grid()
+    if saveFig: plt.savefig(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/plots/training/r2', f"{model}_{dataset}_{loss}_R2Score.png"), dpi=300, bbox_inches='tight')
+    if showPlot: plt.show()     
 
-print("Starting Multi-Border Classifier Training...")
+def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
 
-for epoch in range(config.EPOCHS):
-    model.train()
-    total_loss = 0
-    progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config.EPOCHS}")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{TRAINING_SET}.csv"), index_col=0)
+    print(f"\n USING DATASET: {TRAINING_SET}\n")
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    random.seed(SEED)
 
-    for X_batch, Y_batch in train_loader:
-        X_batch = X_batch.to(device)
-        Y_batch = Y_batch.to(device)
-        optimizer.zero_grad()
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(SEED)
+        torch.cuda.manual_seed_all(SEED)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
-        outputs = model(X_batch)
-        loss = 0
-        for border_idx, border in enumerate(borders):
-            loss += criterion(outputs[border], Y_batch[:, border_idx])
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
-        progress_bar.set_postfix(loss=loss.item())
-        progress_bar.update(1)
+    # Dataset X & Y has to merged (only use intersecting timestamps), they are separated again here..
+    if BORDER_TYPE == "MAXBEX":
+        first_target_idx = full_df.columns.get_loc("AUS_CZE")
+    elif BORDER_TYPE == "NTC":
+        first_target_idx = full_df.columns.get_loc("AT_to_IT_NORD")
+    else:
+        raise ValueError("Wrong BORDER_TYPE!")
 
-    # Validation
-    model.eval()
-    val_loss = 0
-    border_preds = {border: [] for border in borders}
-    border_trues = {border: [] for border in borders}
 
-    with torch.no_grad():
-        for X_batch, Y_batch in val_loader:
-            X_batch, Y_batch = X_batch.to(device), Y_batch.to(device)
-            outputs = model(X_batch)
-            batch_loss = 0
-            for border_idx, border in enumerate(borders):
-                batch_loss += criterion(outputs[border], Y_batch[:, border_idx])
-                preds = torch.argmax(outputs[border], dim=1).cpu().numpy()
-                border_preds[border].extend(preds)
-                border_trues[border].extend(Y_batch[:, border_idx].cpu().numpy())
-            val_loss += batch_loss.item()
+    X = full_df.iloc[:, :first_target_idx]
+    Y = full_df.iloc[:, first_target_idx:]
 
-    scheduler.step()
+    split_index = int(len(full_df) * TRAIN_SPLIT)
+    val_index = int(split_index * (1 - VALID_SPLIT))
 
-    print(f"Epoch {epoch+1} | Train Loss: {total_loss/len(train_loader):.4f} | Val Loss: {val_loss/len(val_loader):.4f}")
+    X_train_full = X.iloc[:split_index]
+    Y_train_full = Y.iloc[:split_index]
 
-# Evaluation Report Per Border
-report_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics')
-os.makedirs(report_dir, exist_ok=True)
+    X_train = X_train_full.iloc[:val_index]
+    Y_train = Y_train_full.iloc[:val_index]
 
-for border in borders:
-    acc = accuracy_score(border_trues[border], border_preds[border])
-    report = classification_report(border_trues[border], border_preds[border], target_names=[str(cls) for cls in label_encoders[border].classes_])
-    print(f"\nBorder: {border} | Accuracy: {acc:.4f}\n{report}")
-    with open(os.path.join(report_dir, f"CLASSIFIER_REPORT_{border}.txt"), 'w') as f:
-        f.write(report)
+    X_val = X_train_full.iloc[val_index:]
+    Y_val = Y_train_full.iloc[val_index:]
 
-# Save Model
-model_save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_params', f"multi_border_classifier.pth")
-torch.save(model.state_dict(), model_save_path)
-print(f"Multi-Border Classifier saved to: {model_save_path}")
+    print("Shape of X_train:", X_train.shape) 
+    print("Shape of Y_train:", Y_train.shape) 
+    print("Shape of X_val:", X_val.shape) 
+    print("Shape of Y_val:", Y_val.shape) 
+
+    X_scaler = StandardScaler()
+    Y_scaler = StandardScaler()
+
+    X_train = X_scaler.fit_transform(X_train)
+    X_val = X_scaler.transform(X_val)
+
+    Y_train = Y_scaler.fit_transform(Y_train)
+    Y_val = Y_scaler.transform(Y_val)
+
+
+    if MODEL_NAME == "LSTM":
+        train_dataset = SequenceDataset(X_train, Y_train, seq_len=SEQ_LEN)
+        val_dataset = SequenceDataset(X_val, Y_val, seq_len=SEQ_LEN)
+    else:
+        train_dataset = TensorDataset(torch.tensor(X_train, dtype=torch.float32),
+                                    torch.tensor(Y_train, dtype=torch.float32))
+        val_dataset = TensorDataset(torch.tensor(X_val, dtype=torch.float32),
+                                    torch.tensor(Y_val, dtype=torch.float32))
+    
+    sample_X, sample_Y = train_dataset[0]
+
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+
+    if MODEL_NAME == "LSTM":
+        input_dim = sample_X.shape[1]  
+    else:
+        input_dim = sample_X.shape[0] 
+    output_dim = sample_Y.shape[0]
+
+    model = get_model(MODEL_NAME, input_dim, output_dim).to(device)
+
+    criterion = CRITERION_CLASS()
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
+
+    train_losses = []
+    val_losses = []
+    train_r2_scores = []
+    train_mae_scores = []
+    val_r2_scores = []
+    val_mae_scores = []
+
+
+
+    for epoch in range(EPOCHS):
+        model.train()
+        epoch_loss = 0  
+        y_train_true_list = []
+        y_train_pred_list = []
+        
+        for X_batch, y_batch in train_loader:
+            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+
+            optimizer.zero_grad()
+            predictions = model(X_batch)
+            loss = criterion(predictions, y_batch)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
+
+            y_train_pred = predictions.detach().cpu().numpy()
+            y_train_true = y_batch.detach().cpu().numpy()
+
+            y_train_pred = Y_scaler.inverse_transform(y_train_pred)
+            y_train_true = Y_scaler.inverse_transform(y_train_true)
+
+            y_train_pred_list.append(y_train_pred)
+            y_train_true_list.append(y_train_true)
+
+        
+        y_train_pred_full = np.vstack(y_train_pred_list)
+        y_train_true_full = np.vstack(y_train_true_list)
+
+        train_r2 = r2_score(y_train_true_full, y_train_pred_full)
+        train_mae = mean_absolute_error(y_train_true_full, y_train_pred_full)
+
+        train_r2_scores.append(train_r2)
+        train_mae_scores.append(train_mae)
+
+        model.eval()
+        val_loss = 0
+        y_val_true_list = []
+        y_val_pred_list = []
+        with torch.no_grad():
+            for X_batch, y_batch in val_loader:
+                X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+
+                y_pred = model(X_batch)
+                loss = criterion(y_pred, y_batch)
+                val_loss += loss.item()
+                
+                y_pred = y_pred.cpu().numpy()
+                y_batch = y_batch.cpu().numpy()
+
+                y_pred = Y_scaler.inverse_transform(y_pred)
+                y_true = Y_scaler.inverse_transform(y_batch)
+
+                y_val_pred_list.append(y_pred)
+                y_val_true_list.append(y_true)    
+
+        y_pred_full = np.vstack(y_val_pred_list)
+        y_true_full = np.vstack(y_val_true_list)
+
+        val_r2 = r2_score(y_true_full, y_pred_full)
+        val_mae = mean_absolute_error(y_true_full, y_pred_full)
+
+        train_losses.append(epoch_loss / len(train_loader))
+        val_losses.append(val_loss / len(val_loader))
+        val_r2_scores.append(val_r2)
+        val_mae_scores.append(val_mae)
+
+        scheduler.step(val_loss)
+
+        if (epoch+1) % 20 == 0 or epoch == 0:
+            print(f"Epoch {epoch+1}/{EPOCHS} | Train {criterion.__class__.__name__}: {train_losses[-1]:.2f} | Val {criterion.__class__.__name__}: {val_losses[-1]:.2f} | Train-R²: {train_r2:.2f} | Val-R²: {val_r2:.2f} | Train-MAE: {train_mae:.2f} | Val-MAE: {val_mae:.2f}")
+
+
+    epochs_list = list(range(1, EPOCHS + 1))
+    metrics_df = pd.DataFrame({
+        'epoch': epochs_list,
+        'train_loss': train_losses,
+        'val_loss': val_losses,
+        'train_r2': train_r2_scores,
+        'val_r2' : val_r2_scores,
+        'train_mae': train_mae_scores,
+        'val_mae' : val_mae_scores
+        
+    })
+
+    summary_data = {
+        'ModelType': MODEL_NAME,
+        'Dataset': TRAINING_SET,
+        'Loss Criterion': criterion.__class__.__name__,
+        'Learning Rate': f"{LEARNING_RATE:.6f}",
+        'Weight Decay': f"{WEIGHT_DECAY:.6f}",
+        'Train Split': TRAIN_SPLIT,
+        'Val Split' : VALID_SPLIT,
+        'Batch size': BATCH_SIZE,
+        'Epochs': EPOCHS,
+        'Train loss': round(train_losses[-1], 2),
+        'Train loss MIN': round(min(train_losses), 2),
+        'Val loss': round(val_losses[-1], 2),
+        'Val loss MIN': round(min(val_losses), 2),
+        'Train-R2-Score': round(train_r2_scores[-1], 2),
+        'Val-R2-Score' : round(val_r2_scores[-1], 2),
+        'Train-MAE': round(train_mae_scores[-1], 3),
+        'Val-MAE' : round(val_mae_scores[-1], 3)
+    }
+
+    if MAKE_PLOTS:
+        plotTrainValLoss(metrics_df, criterion.__class__.__name__, TRAINING_SET, MODEL_NAME)
+        plotR2(metrics_df, TRAINING_SET, MODEL_NAME, criterion.__class__.__name__)
+
+
+    summary_df = pd.DataFrame([summary_data])
+
+    summaryXLSX_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', "00_summary.xlsx")
+    os.makedirs(os.path.dirname(summaryXLSX_path), exist_ok=True)
+
+    if os.path.exists(summaryXLSX_path):
+        existing_df = pd.read_excel(summaryXLSX_path)
+        combined_df = pd.concat([existing_df, summary_df], ignore_index=True)
+    else:
+        combined_df = summary_df
+
+    combined_df.to_excel(summaryXLSX_path, index=False)
+    print(f"Updated summary saved to: {summaryXLSX_path}")
+
+    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics', f"metrics_{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.csv")
+    metrics_df.to_csv(csv_path, index=False)
+    print(f"Metrics saved to: {csv_path}")
+
+    torch_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params', f"{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.pth")
+    torch.save(model.state_dict(), torch_model_path)
+    print(f"Model saved at: {torch_model_path}")
+
+
+if __name__ == "__main__":
+
+    DATASETS = ["BL_FBMC_FULL"]
+    MODELS = ["BaseModel"]
+    CRITERIA = [
+        (nn.SmoothL1Loss, "SmoothL1Loss"),
+        (nn.L1Loss, "L1Loss"),
+        (nn.MSELoss, "MSELoss")
+    ]
+    for loss, loss_name in CRITERIA:
+        for model_name in MODELS:
+            for dataset in DATASETS:
+                print(f"\n====== Running {model_name} on {dataset} with {loss_name} ======\n")
+                main(dataset, model_name, loss)

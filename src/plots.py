@@ -3,46 +3,78 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import config
-from train_reg import TRAINING_SET, MODEL_NAME
+#from train_reg import TRAINING_SET, MODEL_NAME
 import data_loader
 from plotter_class import *
+from train_reg import *
+
+MODEL_NAME = 'BaseModel'
+TRAINING_SET = 'BL_NTC_FULL'
+BORDER_TYPE = 'NTC'
+LOSS = 'MSELoss'
 
 
 # Paths
-pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}.csv")
-y_true_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{TRAINING_SET}.csv")
-nn_metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', f"metrics_{MODEL_NAME}_{TRAINING_SET}.csv")
-metrics_save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/plots/model_metrics', f"{MODEL_NAME}_{TRAINING_SET}.png")
+
 
 MAXBEX_BORDERS = ["AUS_CZE", "CZE_AUS", "AUS_GER", "GER_AUS","BEL_FRA","FRA_BEL","BEL_GER","GER_BEL","BEL_NET","NET_BEL","CZE_GER",
                 "CZE_POL","POL_CZE","GER_NET","NET_GER","GER_POL","POL_GER","GER_FRA","FRA_GER"]
 
-NTC_BORDERS = []
+NTC_BORDERS = [
+        'AT_to_IT_NORD', 'IT_NORD_to_AT',
+        'AT_to_CH', 'CH_to_AT', 'BE_to_GB', 'GB_to_BE', 'BE_to_NL', 'NL_to_BE',
+        'SI_to_IT_NORD', 'IT_NORD_to_SI', 'DK_1_to_DE_LU', 'DE_LU_to_DK_1',
+        'DK_1_to_NL', 'NL_to_DK_1', 'DK_2_to_DE_LU', 'DE_LU_to_DK_2',
+        'ES_to_FR', 'FR_to_ES', 'ES_to_PT', 'PT_to_ES', 'FR_to_GB', 'GB_to_FR',
+        'FR_to_IT_NORD', 'IT_NORD_to_FR', 'FR_to_CH', 'CH_to_FR',
+        'GB_to_NL', 'NL_to_GB', 'DE_LU_to_NL', 'NL_to_DE_LU',
+        'DE_LU_to_CH', 'CH_to_DE_LU', 'IT_NORD_to_CH', 'CH_to_IT_NORD',
+        'NL_to_NO_2', 'NO_2_to_NL'
+    ]
 
-PLOT_BORDER = False
-PLOT_METRIC = False
+if BORDER_TYPE == 'NTC':
+    split_col = NTC_BORDERS[0]
+    BORDERS = NTC_BORDERS
+elif BORDER_TYPE == 'MAXBEX':
+    split_col = MAXBEX_BORDERS[0]
+    BORDERS = MAXBEX_BORDERS
+else: 
+    raise ValueError("Wrong Border Type!")
+
+
+
+
+
+
+
+
+
+PLOT_BORDER = True
+PLOT_COMPARE_METRIC = False
 
 if PLOT_BORDER:
-    plotObj = PredictionPlot(pred_path, y_true_path, "AUS_CZE")
+    pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.csv")
+    y_true_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{TRAINING_SET}.csv")
+    plotObj = PredictionPlot(pred_path, y_true_path, split_col)
 
-    for border in MAXBEX_BORDERS:
-
+    for border in BORDERS:
         fig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            'results/plots/pred/baseModel', f"{border}_{MODEL_NAME}_{TRAINING_SET}.png")
+                            f'results/plots/pred/{BORDER_TYPE}/{MODEL_NAME}', f"{border}_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.png")
         plotObj.plot_border(border, fig_path, save_plot=True, show_plot=False)
 
-if PLOT_METRIC:
-
-    metrics_save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/plots/model_metrics', f"{MODEL_NAME}_{TRAINING_SET}.png")
-
-    nn_metrics = SingleMetricPlot(MODEL_NAME, TRAINING_SET, nn_metrics_path, metrics_save_path)
-    nn_metrics.plotR2(save_plot=True)
-    nn_metrics.plotTrainValLoss(save_plot=True)
+"""
+************************************************************************************
+    COMPARISON PLOT
+************************************************************************************
+"""
 
 
-compareMetrix = CompareDFMetricsPlot(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics'), MODEL_NAME)
-compareMetrix.compareValR2()
-compareMetrix.compareTrainR2()
+if PLOT_COMPARE_METRIC:
+    compareMetrix = CompareDFMetricsPlot(os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{MODEL_NAME}'), MODEL_NAME)
+    base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/plots/model_metrics/{MODEL_NAME}')
+
+    compareMetrix.compareValR2(os.path.join(base_path, f'comparison_ValR2_{MODEL_NAME}'), save_plot=True, show_plot=False)
+    compareMetrix.compareTrainR2(os.path.join(base_path, f'comparison_TrainR2_{MODEL_NAME}'), save_plot=True, show_plot=False)
 
 # # Load actual Y data
 # full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)),
