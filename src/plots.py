@@ -6,12 +6,15 @@ import config
 #from train_reg import TRAINING_SET, MODEL_NAME
 import data_loader
 from plotter_class import *
-from train_reg import *
+import train_reg
 
-MODEL_NAME = 'Hybrid'
-TRAINING_SET = 'BL_NTC_FULL'
-BORDER_TYPE = 'NTC'
-LOSS = 'Hybrid'
+MODEL_NAME = 'LSTM'
+TRAINING_SET = 'BL_FBMC_FULL'
+BORDER_TYPE = 'MAXBEX'
+LOSS = 'SmoothL1Loss'
+
+PCA_COMP = train_reg.PCA_COMP
+SEQ_LEN = train_reg.SEQ_LEN
 
 
 # Paths
@@ -49,17 +52,23 @@ else:
 
 
 
-PLOT_BORDER = True
+PLOT_BORDER = False
 PLOT_COMPARE_METRIC = False
 
 if PLOT_BORDER:
-    pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.csv")
+    if MODEL_NAME == 'LSTM':
+        pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}_{SEQ_LEN}.csv")
+    else:
+        pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.csv")
+
     y_true_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{TRAINING_SET}.csv")
     plotObj = PredictionPlot(pred_path, y_true_path, split_col)
 
     for border in BORDERS:
-        fig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            f'results/plots/pred/{BORDER_TYPE}/{MODEL_NAME}', f"{border}_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.png")
+        if MODEL_NAME == 'LSTM':
+            fig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/plots/pred/{BORDER_TYPE}/{MODEL_NAME}', f"{border}_{MODEL_NAME}_{TRAINING_SET}_{LOSS}_{SEQ_LEN}.png")
+        else:
+            fig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/plots/pred/{BORDER_TYPE}/{MODEL_NAME}', f"{border}_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.png")
         plotObj.plot_border(border, fig_path, save_plot=True, show_plot=False)
 
 """
@@ -76,46 +85,41 @@ if PLOT_COMPARE_METRIC:
     compareMetrix.compareValR2(os.path.join(base_path, f'comparison_ValR2_{MODEL_NAME}'), save_plot=True, show_plot=False)
     compareMetrix.compareTrainR2(os.path.join(base_path, f'comparison_TrainR2_{MODEL_NAME}'), save_plot=True, show_plot=False)
 
-# # Load actual Y data
-# full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-#                                    '../prep_data', "BASELINE_MAXBEX.csv"), index_col=0)
-# first_target_idx = full_df.columns.get_loc("AUS_CZE")
-# Y = full_df.iloc[:, first_target_idx:].reset_index()
 
-# # Load predictions
-# predictions_df = pd.read_csv(pred_path)
+# Load your DataFrames
+df1 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/MAXBEX/LSTM/SEQ_LEN=24/metrics_LSTM_AGG_FBMC_SmoothL1Loss_24_PCA128.csv'))
+df3 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/MAXBEX/LSTM/SEQ_LEN=24/metrics_LSTM_AGG_FBMC_SmoothL1Loss_24_NOPCA.csv'))
+df2 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/MAXBEX/LSTM/SEQ_LEN=24/metrics_LSTM_BL_FBMC_FULL_SmoothL1Loss_24_PCA128.csv'))
+df4 = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/MAXBEX/LSTM/SEQ_LEN=24/metrics_LSTM_BL_FBMC_FULL_SmoothL1Loss_24_NOPCA.csv'))
 
-# # Merge on timestamp
-# comparison_df = pd.merge(Y, predictions_df, on="timestamp", how='inner')
+plt.figure(figsize=(12, 6))
 
-# # Convert timestamp to datetime for proper x-axis handling
-# comparison_df["timestamp"] = pd.to_datetime(comparison_df["timestamp"])
+colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:grey']
 
-# # Optional: Downsample if plotting too slow
-# # comparison_df = comparison_df.iloc[::5, :]  # Uncomment to plot every 5th point
+# df1
+plt.plot(df1['train_r2'], label='Train R2 | PCA=128 | AGG_FBMC', color=colors[0], linestyle='-')
+plt.plot(df1['val_r2'], label='Val R2   | PCA=128 | AGG_FBMC', color=colors[0], linestyle='--')
 
-# # Plotting
-# fig, ax = plt.subplots(figsize=(14, 6))
-# ax.plot(comparison_df["timestamp"], comparison_df["AUS_CZE"], label="Actual Capacity", color="blue")
-# ax.plot(comparison_df["timestamp"], comparison_df["AUS_CZE_pred"], label="Predicted Capacity",
-#         color="red", linestyle="dashed")
+# df2
+plt.plot(df2['train_r2'], label='Train R2 | PCA=128 | BL_FBMC_FULL', color=colors[1], linestyle='-')
+plt.plot(df2['val_r2'], label='Val R2    | PCA=128 | BL_FBMC_FULL', color=colors[1], linestyle='--')
 
-# # Format x-axis dates
-# ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-# ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-# fig.autofmt_xdate()
+# df3
+plt.plot(df3['train_r2'], label='Train R2 | PCA=None | AGG_FBMC', color=colors[2], linestyle='-')
+plt.plot(df3['val_r2'], label='Val R2   | PCA=None | AGG_FBMC', color=colors[2], linestyle='--')
 
-# # Labels and title
-# ax.set_xlabel("Timestamp")
-# ax.set_ylabel("Cross-Border Capacity")
-# ax.set_title("Predicted vs. Actual Cross-Border Transmission Capacity")
-# ax.legend()
-# ax.grid()
+# df4
+plt.plot(df4['train_r2'], label='Train R2 | PCA=None | BL_FBMC_FULL', color=colors[3], linestyle='-')
+plt.plot(df4['val_r2'], label='Val R2   | PCA=None | BL_FBMC_FULL', color=colors[3], linestyle='--')
 
-# # Save figure
-# if save_plot:
-#     os.makedirs(os.path.dirname(fig_path), exist_ok=True)
-#     plt.savefig(fig_path, dpi=300, bbox_inches='tight')
-#     print("Figure saved at:", fig_path)
 
-# plt.show()
+# Style
+plt.title("Train vs Val R² — Across Models & PCA Settings")
+plt.xlabel("Epoch")
+plt.ylabel("R² Score")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+

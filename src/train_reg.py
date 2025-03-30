@@ -12,6 +12,7 @@ from model import get_model
 from sklearn.metrics import r2_score, mean_absolute_error
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.ensemble import ExtraTreesRegressor
+from sklearn.decomposition import PCA
 
 
 """
@@ -20,37 +21,34 @@ from sklearn.ensemble import ExtraTreesRegressor
 ************************************
 """
 LOOP_TRAINING = True
-BORDER_TYPE = "NTC"
+BORDER_TYPE = "MAXBEX"
 
-DATASET_LOOP = ["BL_NTC_FULL"]
-MODEL_LOOP = ["LSTM"]
+DATASET_LOOP = ["BL_FBMC_FULL"]
+MODEL_LOOP = ["Net"]
 CRITERIA_LOOP = [
-    (nn.MSELoss, "MSELoss"),
-    (nn.L1Loss, "L1Loss"),
-    (nn.SmoothL1Loss, "SmoothL1Loss")
+    (nn.MSELoss, "MSELoss")
 ]
 
-TRAINING_SET = "BL_NTC_FULL"
-MODEL_NAME = "LSTM"
-CRITERION = nn.L1Loss
-
-TRAIN_SPLIT = 0.9
-VALID_SPLIT = 0.15
-BATCH_SIZE = 256
-EPOCHS = 100
-WEIGHT_DECAY = 1e-3
+TRAIN_SPLIT = 0.95
+VALID_SPLIT = 0.10
+BATCH_SIZE = 64
+EPOCHS = 50
+WEIGHT_DECAY = 3e-3
 LEARNING_RATE = 3e-4
 SEED = 42
-SEQ_LEN = 24*7
+PCA_COMP = 64
+SEQ_LEN = 24
 
+USE_PCA = True
 USE_RF_ONLY = False
 MAKE_PLOTS = True
-
+SHOW_PLOTS = False
 
 """
 ************************************
+    HELPER FUNC
+************************************
 """
-
 
 class SequenceDataset(Dataset):
     def __init__(self, X, Y, seq_len):
@@ -63,9 +61,17 @@ class SequenceDataset(Dataset):
         return len(self.X) - self.seq_len
 
     def __getitem__(self, idx):
-        x_seq = self.X[idx : idx + self.seq_len]               # shape: [seq_len, num_features]
-        y_target = self.Y[idx + self.seq_len]                  # shape: [num_targets]
+        x_seq = self.X[idx : idx + self.seq_len]               
+        y_target = self.Y[idx + self.seq_len]                  
         return x_seq, y_target
+
+def print_nan_summary(df):
+    total_nans = df.isna().sum().sum()
+    print(f"Total NaNs in dataset: {total_nans}")
+
+    if total_nans > 0:
+        print("\n🔍 NaNs per column:")
+        print(df.isna().sum()[df.isna().sum() > 0].sort_values(ascending=False))
 
 def RFAnalysis():
     df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{TRAINING_SET}.csv"), index_col=0)
@@ -100,9 +106,9 @@ def RFAnalysis():
     print(f"Feature importance saved to: {feature_importance_path}\n")
     exit() 
 
-def analyze_feature_importance(X_train, Y_train, feature_names, dataset, top_n=30, saveFig=True, showPlot=False):
+def analyze_feature_importance(X_train, Y_train, feature_names, dataset, top_n=40, saveFig=True, showPlot=False):
     rf = ExtraTreesRegressor(
-        n_estimators=500,     
+        n_estimators=1000,     
         max_depth=None,         
         min_samples_split=5, 
         max_features='sqrt',  
@@ -157,8 +163,9 @@ def plotR2(metrics_df, dataset, model, loss, saveFig=True, showPlot=False):
 
 def buildTrainValDataset(dataset):
     df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{dataset}.csv"), index_col=0)
+    #df = safe_downcast_floats(df)
     print(f"\n USING DATASET: {dataset}\n")
-
+    print_nan_summary(df)
     # Dataset X & Y has to merged (only use intersecting timestamps), they are separated again here..
     if BORDER_TYPE == "MAXBEX":
         first_target_idx = df.columns.get_loc("AUS_CZE")
@@ -189,8 +196,32 @@ def buildTrainValDataset(dataset):
     
     return X_train, Y_train, X_val, Y_val
 
+"""
+************************************************************************************************************************************************************************************
+                                                                    TRAINING LOOP
+************************************************************************************************************************************************************************************
+"""
+
+
 def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
 
+    if MODEL_NAME == 'LSTM':
+        torch_model_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}')
+        csv_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}')
+        torch_model_path = os.path.join(torch_model_base_path, f"{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}_{SEQ_LEN}.pth")
+        csv_path = os.path.join(csv_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}_{SEQ_LEN}.csv")
+    else:
+        torch_model_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}')
+        csv_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}')
+        torch_model_path = os.path.join(torch_model_base_path, f"{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}.pth")
+        csv_path = os.path.join(csv_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}.csv")
+
+    summaryXLSX_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', "00_summary.xlsx")
+
+    os.makedirs(torch_model_base_path, exist_ok=True)
+    os.makedirs(csv_path_base_path, exist_ok=True)
+    os.makedirs(os.path.dirname(summaryXLSX_path), exist_ok=True)
+    
     if USE_RF_ONLY:
         RFAnalysis()
 
@@ -208,12 +239,16 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
 
     X_train, Y_train, X_val, Y_val = buildTrainValDataset(TRAINING_SET)
 
-    X_scaler = StandardScaler()
+    if USE_PCA:
+        pca = PCA(n_components=PCA_COMP) 
+        X_train = pca.fit_transform(X_train)
+        X_val = pca.transform(X_val)
+    else:
+        X_scaler = StandardScaler()
+        X_train = X_scaler.fit_transform(X_train)
+        X_val = X_scaler.transform(X_val)
+
     Y_scaler = StandardScaler()
-
-    X_train = X_scaler.fit_transform(X_train)
-    X_val = X_scaler.transform(X_val)
-
     Y_train = Y_scaler.fit_transform(Y_train)
     Y_val = Y_scaler.transform(Y_val)
 
@@ -250,10 +285,16 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
     train_mae_scores = []
     val_r2_scores = []
     val_mae_scores = []
+    best_val_r2 = -np.inf 
+
+    print(f"\nStarting Training: \n \n Train Split: {int(TRAIN_SPLIT*100)}% | Val Split: {int(VALID_SPLIT*100)}%")
+    print(f"Batch size: {BATCH_SIZE} | Weight Decay: {WEIGHT_DECAY} | Learning Rate: {LEARNING_RATE}")
+    print(f"Sequence L (LSTM): {SEQ_LEN} | PCA Reduction: {PCA_COMP}\n")
 
     for epoch in range(EPOCHS):
         model.train()
         epoch_loss = 0  
+
         y_train_true_list = []
         y_train_pred_list = []
         
@@ -276,7 +317,6 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
             y_train_pred_list.append(y_train_pred)
             y_train_true_list.append(y_train_true)
 
-        
         y_train_pred_full = np.vstack(y_train_pred_list)
         y_train_true_full = np.vstack(y_train_true_list)
 
@@ -294,24 +334,29 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
             for X_batch, y_batch in val_loader:
                 X_batch, y_batch = X_batch.to(device), y_batch.to(device)
 
-                y_pred = model(X_batch)
-                loss = criterion(y_pred, y_batch)
+                y_pred_log = model(X_batch)
+                loss = criterion(y_pred_log, y_batch)
                 val_loss += loss.item()
-                
-                y_pred = y_pred.cpu().numpy()
-                y_batch = y_batch.cpu().numpy()
+
+                y_pred = y_pred_log.detach().cpu().numpy()
+                y_true = y_batch.detach().cpu().numpy()
 
                 y_pred = Y_scaler.inverse_transform(y_pred)
-                y_true = Y_scaler.inverse_transform(y_batch)
+                y_true = Y_scaler.inverse_transform(y_true)
 
                 y_val_pred_list.append(y_pred)
                 y_val_true_list.append(y_true)    
+
 
         y_pred_full = np.vstack(y_val_pred_list)
         y_true_full = np.vstack(y_val_true_list)
 
         val_r2 = r2_score(y_true_full, y_pred_full)
         val_mae = mean_absolute_error(y_true_full, y_pred_full)
+
+        if val_r2 > best_val_r2:
+            best_val_r2 = val_r2
+            torch.save(model.state_dict(), torch_model_path)
 
         train_losses.append(epoch_loss / len(train_loader))
         val_losses.append(val_loss / len(val_loader))
@@ -320,7 +365,7 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
 
         scheduler.step(val_loss)
 
-        if (epoch+1) % 10 == 0 or epoch == 0:
+        if (epoch+1) % 4 == 0 or epoch == 0:
             print(f"Epoch {epoch+1}/{EPOCHS} | Train {criterion.__class__.__name__}: {train_losses[-1]:.2f} | Val {criterion.__class__.__name__}: {val_losses[-1]:.2f} | Train-R²: {train_r2:.2f} | Val-R²: {val_r2:.2f} | Train-MAE: {train_mae:.2f} | Val-MAE: {val_mae:.2f}")
 
 
@@ -363,9 +408,6 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
 
     summary_df = pd.DataFrame([summary_data])
 
-    summaryXLSX_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', "00_summary.xlsx")
-    os.makedirs(os.path.dirname(summaryXLSX_path), exist_ok=True)
-
     if os.path.exists(summaryXLSX_path):
         existing_df = pd.read_excel(summaryXLSX_path)
         combined_df = pd.concat([existing_df, summary_df], ignore_index=True)
@@ -375,26 +417,14 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
     combined_df.to_excel(summaryXLSX_path, index=False)
     print(f"Updated summary saved to: {summaryXLSX_path}")
 
-    csv_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}')
-    csv_path = os.path.join(csv_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.csv")
-    os.makedirs(csv_path_base_path, exist_ok=True)
     metrics_df.to_csv(csv_path, index=False)
     print(f"Metrics saved to: {csv_path}")
 
-    torch_model_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}')
-    torch_model_path = os.path.join(torch_model_base_path, f"{MODEL_NAME}_{TRAINING_SET}_{criterion.__class__.__name__}.pth")
-    os.makedirs(torch_model_base_path, exist_ok=True)
-    torch.save(model.state_dict(), torch_model_path)
-    print(f"Model saved at: {torch_model_path}")
 
 
 if __name__ == "__main__":
-
-    if LOOP_TRAINING:
-        for loss, loss_name in CRITERIA_LOOP:
-            for model_name in MODEL_LOOP:
-                for dataset in DATASET_LOOP:
-                    print(f"\n====== Running Loop with {model_name} on {dataset} with {loss_name} ======\n")
-                    main(dataset, model_name, loss)
-    else:
-        main(TRAINING_SET, MODEL_NAME, CRITERION)
+    for loss, loss_name in CRITERIA_LOOP:
+        for model_name in MODEL_LOOP:
+            for dataset in DATASET_LOOP:
+                print(f"\n====== Running Loop with {model_name} on {dataset} with {loss_name} ======\n")
+                main(dataset, model_name, loss)

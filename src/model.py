@@ -74,25 +74,45 @@ class Net(nn.Module):
         return x
 
 class LSTM(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim=128, num_layers=3, dropout=0.3):
+    def __init__(self, input_dim, output_dim, hidden_dim=64, num_layers=2, dropout=0.15):
         super(LSTM, self).__init__()
+
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
-        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout)
-        self.fc = nn.Linear(hidden_dim, output_dim)
-        self.layer_norm = nn.LayerNorm(input_dim)
+        self.bidirectional = True
+        self.num_directions = 2 if self.bidirectional else 1
+
+        self.lstm = nn.LSTM(
+            input_size=input_dim,
+            hidden_size=hidden_dim,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout,
+            bidirectional=self.bidirectional
+        )
+        self.attn = nn.Linear(hidden_dim * self.num_directions, 1)
+        self.output = nn.Sequential(
+            nn.Linear(hidden_dim * self.num_directions, 256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, output_dim)
+        )
 
     def forward(self, x):
-        batch_size, seq_length, num_features = x.shape  
-        x = x.view(batch_size * seq_length, num_features) 
-        x = self.layer_norm(x)  
-        x = x.view(batch_size, seq_length, num_features)
+        # x: [batch_size, seq_len, input_dim]
+        B, T, D = x.size()
 
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_dim).to(x.device)
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_dim).to(x.device)
+        h0 = torch.zeros(self.num_layers * self.num_directions, B, self.hidden_dim).to(x.device)
+        c0 = torch.zeros(self.num_layers * self.num_directions, B, self.hidden_dim).to(x.device)
 
-        out, _ = self.lstm(x, (h0, c0))
-        out = self.fc(out[:, -1, :])
+        out, _ = self.lstm(x, (h0, c0))  # out: [B, T, hidden_dim * num_directions]
+
+        attn_weights = self.attn(out)              # [B, T, 1]
+        attn_weights = torch.softmax(attn_weights, dim=1)  # softmax over time
+        context = torch.sum(attn_weights * out, dim=1)     # [B, H]
+
+        out = self.output(context)  # [B, output_dim]
+
         return out
 
 class HybridOutputMLP(nn.Module):
@@ -101,11 +121,11 @@ class HybridOutputMLP(nn.Module):
         self.shared = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
+            nn.LeakyReLU(negative_slope=0.01),
             nn.Dropout(0.3),
             nn.Linear(hidden_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
+            nn.LeakyReLU(negative_slope=0.01),
             nn.Dropout(0.3)
         )
         self.cls_heads = nn.ModuleList([nn.Linear(hidden_dim, n) for n in cls_dims])

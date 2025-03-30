@@ -237,18 +237,18 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
         le = LabelEncoder()
         Y_train[col] = le.fit_transform(Y_train[col])
         label_encoders[col] = le
-
-        # Safely cast both keys and values to str for JSON
         mapping = {
             str(int(k)): str(v) for k, v in zip(le.transform(le.classes_), le.classes_)
         }
         class_mappings[col] = mapping
 
     # Save to JSON
-    with open("class_mappings.json", "w") as f:
+    classmapping_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}', f'cls_map_{MODEL_NAME}_{TRAINING_SET}.json')
+    with open(classmapping_path, "w") as f:
         json.dump(class_mappings, f, indent=2)
 
-    print("✅ Saved class mappings to class_mappings.json")
+    print("Saved class mappings")
+
     for epoch in range(EPOCHS):
         model.train()
         train_loss = 0
@@ -405,7 +405,8 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
                     else:
                         print(f"   - {col}: skipped (no valid samples)")
 
-    # -------------------- 📊 PLOTS --------------------
+    # -------------------- PLOTS --------------------
+    
     if reg_cols:
         plt.figure(figsize=(12, 6))
         for i, col in enumerate(reg_cols):
@@ -444,21 +445,23 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
         plt.grid(True)
         plt.show()
 
-    # -------------------- 💾 SAVE METRICS & MODEL --------------------
+    # -------------------- SAVE METRICS & MODEL --------------------
     if reg_cols:
         r2_df = pd.DataFrame(val_r2_scores, columns=[f"{col}_R2" for col in reg_cols])
         mae_df = pd.DataFrame(val_mae_scores, columns=[f"{col}_MAE" for col in reg_cols])
         regression_metrics = pd.concat([r2_df, mae_df], axis=1)
         regression_metrics.insert(0, "Epoch", list(range(1, len(regression_metrics) + 1)))
-        regression_metrics.to_csv("regression_metrics.csv", index=False)
-        print("✅ Saved regression metrics to regression_metrics.csv")
+        regression_metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f'metrics_{MODEL_NAME}_{TRAINING_SET}_reg.csv')
+        regression_metrics.to_csv(regression_metrics_path, index=False)
+        print("Saved regression metrics to regression_metrics.csv")
 
     if cls_cols:
         acc_data = {f"{col}_Accuracy": val_cls_accs[i] for i, col in enumerate(cls_cols)}
         classification_metrics = pd.DataFrame(acc_data)
         classification_metrics.insert(0, "Epoch", list(range(1, len(classification_metrics) + 1)))
-        classification_metrics.to_csv("classification_metrics.csv", index=False)
-        print("✅ Saved classification metrics to classification_metrics.csv")
+        class_metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f'metrics_{MODEL_NAME}_{TRAINING_SET}_class.csv')
+        classification_metrics.to_csv(class_metrics_path, index=False)
+        print("Saved classification metrics to classification_metrics.csv")
 
     # Save final model
     torch.save(model.state_dict(), "hybrid_model_final.pth")
@@ -470,6 +473,7 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
     "reg_cols": reg_cols
 }
 
+    model_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}')
     with open("model_config.json", "w") as f:
         json.dump(model_config, f)
     print("✅ Saved model to hybrid_model_final.pth")

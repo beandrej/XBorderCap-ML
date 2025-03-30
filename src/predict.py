@@ -4,21 +4,30 @@ import pandas as pd
 from tqdm import tqdm
 from data_loader import *
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from torch.utils.data import TensorDataset, DataLoader
 from model import *
 import config
 import data_loader
 import train_reg
 
-MODEL_NAME = 'Hybrid'
-BORDER_TYPE = 'NTC'
-LOSS = 'Hybrid'
-TRAINING_SET = 'BL_NTC_FULL'
+MODEL_NAME = 'LSTM'
+BORDER_TYPE = 'MAXBEX'
+LOSS = 'SmoothL1Loss'
+TRAINING_SET = 'BL_FBMC_FULL'
 
-SPLIT_RATIO = train_reg.TRAIN_SPLIT
+PCA_COMP = train_reg.PCA_COMP
+SEQ_LEN = train_reg.SEQ_LEN
 
-model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}.pth")
-pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.csv")
+
+if MODEL_NAME == 'LSTM':
+    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}_{SEQ_LEN}.pth")
+    pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}_{SEQ_LEN}.csv")
+else:
+    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}.pth")
+    pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.csv")
+
+
 
 full_df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{TRAINING_SET}.csv"), index_col=0)
 
@@ -34,14 +43,15 @@ else:
 X = full_df.iloc[:, :first_target_idx]
 Y = full_df.iloc[:, first_target_idx:]
 
-split_index = int(len(full_df) * SPLIT_RATIO)
+split_index = int(len(full_df) * train_reg.TRAIN_SPLIT)
 X_test = X.iloc[split_index:]
 Y_test = Y.iloc[split_index:]
 
-X_scaler = StandardScaler()
+pca = PCA(n_components=PCA_COMP)
+
 Y_scaler = StandardScaler()
 
-X_test = X_scaler.fit_transform(X_test)
+X_test = pca.fit_transform(X_test)
 Y_test_scaled = Y_scaler.fit_transform(Y_test)
 
 X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
@@ -55,8 +65,9 @@ test_indices = range(split_index, len(full_df))
 test_timestamps = full_df.index[test_indices]
 test_timestamps = pd.to_datetime(test_timestamps)
 
+sample_X = next(iter(test_loader))[0]
+input_dim = sample_X.shape[-1] 
 
-input_dim = next(iter(test_loader))[0].shape[1]
 output_dim = Y_test.shape[1]
 
 model = get_model(MODEL_NAME, input_dim, output_dim)
@@ -73,7 +84,7 @@ with torch.no_grad():
     
     for X_batch, _ in progress_bar:
 
-        if MODEL_NAME == "lstm":
+        if MODEL_NAME == "LSTM":
             X_batch = X_batch.view(X_batch.shape[0], 1, X_batch.shape[1])
 
         y_pred = model(X_batch)
