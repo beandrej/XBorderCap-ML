@@ -206,12 +206,12 @@ def buildTrainValDataset(dataset):
 def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
 
     if MODEL_NAME == 'LSTM':
-        torch_model_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}')
+        torch_model_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}')
         csv_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}')
         torch_model_path = os.path.join(torch_model_base_path, f"{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}_{SEQ_LEN}.pth")
         csv_path = os.path.join(csv_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}_{SEQ_LEN}.csv")
     else:
-        torch_model_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}')
+        torch_model_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}')
         csv_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}')
         torch_model_path = os.path.join(torch_model_base_path, f"{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}.pth")
         csv_path = os.path.join(csv_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}.csv")

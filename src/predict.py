@@ -11,7 +11,7 @@ import config
 import data_loader
 import train_reg
 
-MODEL_NAME = 'LSTM'
+MODEL_NAME = 'Net'
 BORDER_TYPE = 'MAXBEX'
 LOSS = 'SmoothL1Loss'
 TRAINING_SET = 'BL_FBMC_FULL'
@@ -21,10 +21,10 @@ SEQ_LEN = train_reg.SEQ_LEN
 
 
 if MODEL_NAME == 'LSTM':
-    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}_{SEQ_LEN}.pth")
+    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}_{SEQ_LEN}.pth")
     pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}_{SEQ_LEN}.csv")
 else:
-    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}.pth")
+    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}.pth")
     pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.csv")
 
 

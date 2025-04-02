@@ -14,13 +14,14 @@ MODEL_NAME = 'Hybrid'
 BORDER_TYPE = 'NTC'
 LOSS = 'Hybrid'
 TRAINING_SET = 'BL_NTC_FULL'
+UNIQUE_VAL_TRSH = 50
 
 # --- PATHS ---
 base_dir = os.path.dirname(os.path.abspath(__file__))
 data_path = os.path.join(base_dir, "../prep_data", f"{TRAINING_SET}.csv")
-model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}.pth")
-mapping_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}', f"class_mappings.json")
-config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}.json")
+model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}', f"{MODEL_NAME}_{TRAINING_SET}_{LOSS}.pth")
+mapping_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}/mappings', f"cls_map_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}.json")
+config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}', f"params_{MODEL_NAME}_{TRAINING_SET}.json")
 pred_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/predictions_csv', f"pred_{MODEL_NAME}_{TRAINING_SET}_{LOSS}.csv")
 
 # --- LOAD DATA ---

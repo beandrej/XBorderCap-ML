@@ -42,9 +42,11 @@ WEIGHT_DECAY = 1e-3
 LEARNING_RATE = 3e-4
 SEED = 42
 SEQ_LEN = 24*7*2
+UNIQUE_VAL_TRSH = 50
 
 USE_RF_ONLY = False
 MAKE_PLOTS = True
+SAVE_PLOTS = True
 
 
 """
@@ -133,7 +135,7 @@ def safe_label_encode(train_col, val_col):
 
     return train_encoded, val_encoded, le
 
-def getTargetTypes(Y_train, threshold=100):
+def getTargetTypes(Y_train, threshold):
     target_types = {}
     for col in Y_train.columns:
         unique_count = Y_train[col].nunique()
@@ -143,7 +145,34 @@ def getTargetTypes(Y_train, threshold=100):
             target_types[col] = 'classification'
     return target_types
 
-def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
+def compute_global_mae(reg_preds, reg_trues, cls_preds, cls_trues):
+    mae_list = []
+
+    # Regression heads
+    if len(reg_preds) > 0:
+        for i in range(reg_preds.shape[1]):
+            mae = mean_absolute_error(reg_trues[:, i], reg_preds[:, i])
+            mae_list.append(mae)
+
+    # Classification heads
+    for cp, ct in zip(cls_preds, cls_trues):
+        cp = np.array(cp)
+        ct = np.array(ct)
+
+        # Sanity check
+        if len(cp) == 0 or len(ct) == 0:
+            continue
+
+        min_len = min(len(cp), len(ct))
+        cp = cp[:min_len]
+        ct = ct[:min_len]
+
+        mae = mean_absolute_error(ct, cp)
+        mae_list.append(mae)
+
+    return np.mean(mae_list) if mae_list else 0.0
+
+def main(TRAINING_SET, MODEL_NAME):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -159,7 +188,7 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
 
     X_train, Y_train, X_val, Y_val = buildTrainValDataset(TRAINING_SET)
 
-    target_types = getTargetTypes(Y_train)
+    target_types = getTargetTypes(Y_train, UNIQUE_VAL_TRSH)
     cls_cols = [col for col, t in target_types.items() if t == 'classification']
     reg_cols = [col for col, t in target_types.items() if t == 'regression']
 
@@ -224,9 +253,11 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
     train_losses = []
     val_losses = []
     train_r2_scores = []
-    train_mae_scores = []
     val_r2_scores = []
-    val_mae_scores = []
+    train_acc_scores = []
+    val_acc_scores = []
+    train_global_mae_scores = []
+    val_global_mae_scores = []
 
     train_cls_accs = [[] for _ in range(len(cls_cols))]
     val_cls_accs = [[] for _ in range(len(cls_cols))]
@@ -243,7 +274,7 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
         class_mappings[col] = mapping
 
     # Save to JSON
-    classmapping_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}', f'cls_map_{MODEL_NAME}_{TRAINING_SET}.json')
+    classmapping_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}/mappings', f'cls_map_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}.json')
     with open(classmapping_path, "w") as f:
         json.dump(class_mappings, f, indent=2)
 
@@ -298,17 +329,18 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
             y_train_true_full = np.vstack(y_train_true_list)
 
             train_r2 = r2_score(y_train_true_full, y_train_pred_full)
-            train_mae = mean_absolute_error(y_train_true_full, y_train_pred_full)
-
             train_r2_scores.append(train_r2)
-            train_mae_scores.append(train_mae)
-
-            per_head_train_r2 = [r2_score(y_train_true_full[:, i], y_train_pred_full[:, i]) for i in range(len(reg_cols))]
-            per_head_train_mae = [mean_absolute_error(y_train_true_full[:, i], y_train_pred_full[:, i]) for i in range(len(reg_cols))]
         else:
-            train_r2 = train_mae = 0.0
-            per_head_train_r2 = []
-            per_head_train_mae = []
+            train_r2 = train_global_mae = 0.0
+            train_r2_scores.append(train_r2)
+            
+        train_global_mae = compute_global_mae(
+            y_train_pred_full if reg_cols else [],
+            y_train_true_full if reg_cols else [],
+            cls_train_preds,
+            cls_train_trues
+        )
+        train_global_mae_scores.append(train_global_mae)
 
         per_head_train_accs = []
         for i in range(len(cls_cols)):
@@ -319,7 +351,17 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
             else:
                 per_head_train_accs.append(None)
 
+        valid_train_accs = [acc for acc in per_head_train_accs if acc is not None]
+        mean_train_cls_acc = np.mean(valid_train_accs) if valid_train_accs else None
+
+
+
+
+        ##############################################
         # ---------------- Validation ----------------
+        ##############################################
+
+
         model.eval()
         val_loss = 0
         y_val_pred_list = []
@@ -366,14 +408,18 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
             y_val_true_full = np.vstack(y_val_true_list)
 
             val_r2 = r2_score(y_val_true_full, y_val_pred_full)
-            val_mae = mean_absolute_error(y_val_true_full, y_val_pred_full)
-
             val_r2_scores.append([r2_score(y_val_true_full[:, i], y_val_pred_full[:, i]) for i in range(len(reg_cols))])
-            val_mae_scores.append([mean_absolute_error(y_val_true_full[:, i], y_val_pred_full[:, i]) for i in range(len(reg_cols))])
         else:
-            val_r2 = val_mae = 0.0
-            val_r2_scores.append([])
-            val_mae_scores.append([])
+            val_r2  = 0.0
+            val_r2_scores.append(val_r2)
+
+        val_global_mae = compute_global_mae(
+            y_val_pred_full if reg_cols else [],
+            y_val_true_full if reg_cols else [],
+            cls_val_preds,
+            cls_val_trues
+        )
+        val_global_mae_scores.append(val_global_mae)
 
         per_head_val_accs = []
         for i in range(len(cls_cols)):
@@ -384,12 +430,16 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
             else:
                 per_head_val_accs.append(None)
 
+        valid_accs = [acc for acc in per_head_val_accs if acc is not None]
+        mean_val_cls_acc = np.mean(valid_accs) if valid_accs else None
+
         scheduler.step(val_loss)
 
         print(f"Epoch {epoch+1}/{EPOCHS} | "
             f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | "
-            f"Train R²: {train_r2:.4f} | Val R²: {val_r2:.4f} | "
-            f"Train MAE: {train_mae:.4f} | Val MAE: {val_mae:.4f}")
+            f"Train Reg R²: {train_r2:.4f} | Val Reg R²: {val_r2:.4f} | " # 
+            f"Train Cls Acc.: {mean_train_cls_acc:.4f} | Val Cls Acc.: {mean_val_cls_acc:.4f} | " # mean accuracy across all cls heads
+            f"Train Global MAE: {train_global_mae:.4f} | Val Global MAE : {val_global_mae:.4f}") # mean absolute error across all cols
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
             if reg_cols:
@@ -405,53 +455,60 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
                     else:
                         print(f"   - {col}: skipped (no valid samples)")
 
+
+
+
+
+
+
+
+
+
+
+
+
     # -------------------- PLOTS --------------------
     
-    if reg_cols:
-        plt.figure(figsize=(12, 6))
-        for i, col in enumerate(reg_cols):
-            r2s = [r2_epoch[i] for r2_epoch in val_r2_scores if len(r2_epoch) > i]
-            plt.plot(r2s, label=col)
-        plt.title("Per-Head R² (Validation)")
-        plt.xlabel("Epoch")
-        plt.ylabel("R² Score")
-        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        plt.tight_layout()
-        plt.grid(True)
-        plt.show()
+    if MAKE_PLOTS:
+        if reg_cols:
+            plt.figure(figsize=(12, 6))
+            for i, col in enumerate(reg_cols):
+                r2s = [r2_epoch[i] for r2_epoch in val_r2_scores if len(r2_epoch) > i]
+                plt.plot(r2s, label=col)
+            plt.title("Per-Head R² (Validation)")
+            plt.xlabel("Epoch")
+            plt.ylabel("R² Score")
+            plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+            plt.tight_layout()
+            plt.grid(True)
+            plt.show()
 
-        plt.figure(figsize=(12, 6))
-        for i, col in enumerate(reg_cols):
-            maes = [mae_epoch[i] for mae_epoch in val_mae_scores if len(mae_epoch) > i]
-            plt.plot(maes, label=col)
-        plt.title("Per-Head MAE (Validation)")
-        plt.xlabel("Epoch")
-        plt.ylabel("Mean Absolute Error")
-        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        plt.tight_layout()
-        plt.grid(True)
-        plt.show()
+        if cls_cols:
+            plt.figure(figsize=(12, 6))
+            for i, col in enumerate(cls_cols):
+                accs = val_cls_accs[i]
+                plt.plot(accs, label=col)
+            plt.title("Per-Head Accuracy (Validation)")
+            plt.xlabel("Epoch")
+            plt.ylabel("Accuracy")
+            plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+            plt.tight_layout()
+            plt.grid(True)
+            plt.show()
 
-    if cls_cols:
-        plt.figure(figsize=(12, 6))
-        for i, col in enumerate(cls_cols):
-            accs = val_cls_accs[i]
-            plt.plot(accs, label=col)
-        plt.title("Per-Head Accuracy (Validation)")
-        plt.xlabel("Epoch")
-        plt.ylabel("Accuracy")
-        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        plt.tight_layout()
-        plt.grid(True)
-        plt.show()
+
+
+
+
+
+
+
 
     # -------------------- SAVE METRICS & MODEL --------------------
     if reg_cols:
-        r2_df = pd.DataFrame(val_r2_scores, columns=[f"{col}_R2" for col in reg_cols])
-        mae_df = pd.DataFrame(val_mae_scores, columns=[f"{col}_MAE" for col in reg_cols])
-        regression_metrics = pd.concat([r2_df, mae_df], axis=1)
+        regression_metrics = pd.DataFrame(val_r2_scores, columns=[f"{col}_R2" for col in reg_cols])
         regression_metrics.insert(0, "Epoch", list(range(1, len(regression_metrics) + 1)))
-        regression_metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f'metrics_{MODEL_NAME}_{TRAINING_SET}_reg.csv')
+        regression_metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f'metrics_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}_reg.csv')
         regression_metrics.to_csv(regression_metrics_path, index=False)
         print("Saved regression metrics to regression_metrics.csv")
 
@@ -459,42 +516,46 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
         acc_data = {f"{col}_Accuracy": val_cls_accs[i] for i, col in enumerate(cls_cols)}
         classification_metrics = pd.DataFrame(acc_data)
         classification_metrics.insert(0, "Epoch", list(range(1, len(classification_metrics) + 1)))
-        class_metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f'metrics_{MODEL_NAME}_{TRAINING_SET}_class.csv')
+        class_metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f'metrics_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}_class.csv')
         classification_metrics.to_csv(class_metrics_path, index=False)
         print("Saved classification metrics to classification_metrics.csv")
 
     # Save final model
-    torch.save(model.state_dict(), "hybrid_model_final.pth")
+    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}', f'{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}.pth')
+    torch.save(model.state_dict(), model_path)
+
+
     model_config = {
     "input_dim": X_tensor_train.shape[1],
     "cls_dims": cls_dims,
     "reg_count": reg_count,
     "cls_cols": cls_cols,
     "reg_cols": reg_cols
-}
+    }
 
-    model_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_params/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}')
-    with open("model_config.json", "w") as f:
+    model_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}/model_config', f'params_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}.json')
+    with open(model_config_path, "w") as f:
         json.dump(model_config, f)
-    print("✅ Saved model to hybrid_model_final.pth")
+    print("Saved model json config")
 
-
-
-
-
-"""
     epochs_list = list(range(1, EPOCHS + 1))
     metrics_df = pd.DataFrame({
-        'epoch': epochs_list,
-        'train_loss': train_losses,
-        'val_loss': val_losses,
+        'epoch': list(range(1, EPOCHS + 1)),
         'train_r2': train_r2_scores,
-        'val_r2' : val_r2_scores,
-        'train_mae': train_mae_scores,
-        'val_mae' : val_mae_scores
-        
+        'val_r2': val_r2_scores,
+        'train_global_mae': train_global_mae_scores,
+        'val_global_mae': val_global_mae_scores,
+        'train_cls_acc': [np.mean([a for a in accs if a is not None]) for accs in zip(*train_cls_accs)],
+        'val_cls_acc': [np.mean([a for a in accs if a is not None]) for accs in zip(*val_cls_accs)],
     })
 
+    csv_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f'metrics_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}')
+    csv_path = os.path.join(csv_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}.csv")
+    os.makedirs(csv_path_base_path, exist_ok=True)
+    metrics_df.to_csv(csv_path, index=False)
+    print(f"Metrics saved to: {csv_path}") 
+
+"""
     summary_data = {
         'ModelType': MODEL_NAME,
         'Dataset': TRAINING_SET,
@@ -550,12 +611,11 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
 if __name__ == "__main__":
 
     if LOOP_TRAINING:
-        for loss, loss_name in CRITERIA_LOOP:
-            for model_name in MODEL_LOOP:
-                for dataset in DATASET_LOOP:
-                    print(f"\n====== Running Loop with {model_name} on {dataset} with {loss_name} ======\n")
-                    main(dataset, model_name, loss)
+        for model_name in MODEL_LOOP:
+            for dataset in DATASET_LOOP:
+                print(f"\n====== Running Loop with {model_name} on {dataset} ======\n")
+                main(dataset, model_name)
     else:
-        main(TRAINING_SET, MODEL_NAME, CRITERION)
+        main(TRAINING_SET, MODEL_NAME)
         
         
