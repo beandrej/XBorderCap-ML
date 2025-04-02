@@ -73,7 +73,7 @@ def print_nan_summary(df):
         print("\n🔍 NaNs per column:")
         print(df.isna().sum()[df.isna().sum() > 0].sort_values(ascending=False))
 
-def RFAnalysis():
+def RFAnalysis(TRAINING_SET):
     df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{TRAINING_SET}.csv"), index_col=0)
     print(f"\n USING DATASET: {TRAINING_SET}\n")
 
@@ -223,7 +223,7 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
     os.makedirs(os.path.dirname(summaryXLSX_path), exist_ok=True)
     
     if USE_RF_ONLY:
-        RFAnalysis()
+        RFAnalysis(TRAINING_SET)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -291,6 +291,12 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
     print(f"Batch size: {BATCH_SIZE} | Weight Decay: {WEIGHT_DECAY} | Learning Rate: {LEARNING_RATE}")
     print(f"Sequence L (LSTM): {SEQ_LEN} | PCA Reduction: {PCA_COMP}\n")
 
+    """
+    ************************************************************************************************************************************************************************************
+                                                                        TRAINING LOOP
+    ************************************************************************************************************************************************************************************
+    """
+
     for epoch in range(EPOCHS):
         model.train()
         epoch_loss = 0  
@@ -325,6 +331,14 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
 
         train_r2_scores.append(train_r2)
         train_mae_scores.append(train_mae)
+
+
+        """
+        ************************************************************************************************************************************************************************************
+                                                                            VALIDATION
+        ************************************************************************************************************************************************************************************
+        """
+
 
         model.eval()
         val_loss = 0
@@ -367,6 +381,13 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
 
         if (epoch+1) % 4 == 0 or epoch == 0:
             print(f"Epoch {epoch+1}/{EPOCHS} | Train {criterion.__class__.__name__}: {train_losses[-1]:.2f} | Val {criterion.__class__.__name__}: {val_losses[-1]:.2f} | Train-R²: {train_r2:.2f} | Val-R²: {val_r2:.2f} | Train-MAE: {train_mae:.2f} | Val-MAE: {val_mae:.2f}")
+
+
+    """
+    ************************************************************************************************************************************************************************************
+                                                                        METRICS
+    ************************************************************************************************************************************************************************************
+    """
 
 
     epochs_list = list(range(1, EPOCHS + 1))
