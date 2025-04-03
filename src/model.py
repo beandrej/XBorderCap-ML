@@ -28,18 +28,11 @@ class Net(nn.Module):
 
         self.fc3 = nn.Linear(input_dim, input_dim)
         self.batch_norm3 = nn.BatchNorm1d(input_dim)
-        self.dropout3 = nn.Dropout(p=0.2)
 
         self.fc4 = nn.Linear(input_dim, input_dim)
         self.batch_norm4 = nn.BatchNorm1d(input_dim)
 
-        self.fc5 = nn.Linear(input_dim, input_dim)
-        self.batch_norm5 = nn.BatchNorm1d(input_dim)
-
-        self.fc6 = nn.Linear(input_dim, input_dim)
-        self.batch_norm6 = nn.BatchNorm1d(input_dim)
-
-        self.fc7 = nn.Linear(input_dim, output_dim)
+        self.fc5 = nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
         x = torch.nn.functional.leaky_relu(self.fc1(x), negative_slope=0.01)
@@ -52,22 +45,15 @@ class Net(nn.Module):
 
         x = torch.nn.functional.leaky_relu(self.fc3(x), negative_slope=0.01)
         x = self.batch_norm3(x)
-        x = self.dropout3(x)
 
         x = torch.nn.functional.leaky_relu(self.fc4(x), negative_slope=0.01)
         x = self.batch_norm4(x)
 
-        x = torch.nn.functional.leaky_relu(self.fc5(x), negative_slope=0.01)
-        x = self.batch_norm5(x)
-
-        x = torch.nn.functional.leaky_relu(self.fc6(x), negative_slope=0.01)
-        x = self.batch_norm6(x)
-
-        x = self.fc7(x)
+        x = self.fc5(x)
         return x
 
 class LSTM(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim=64, num_layers=2, dropout=0.15):
+    def __init__(self, input_dim, output_dim, hidden_dim=128, num_layers=3, dropout=0.15):
         super(LSTM, self).__init__()
 
         self.hidden_dim = hidden_dim

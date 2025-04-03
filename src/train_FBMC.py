@@ -7,7 +7,7 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader, Dataset
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
 from model import get_model
 from sklearn.metrics import r2_score, mean_absolute_error
 from sklearn.ensemble import RandomForestRegressor
@@ -24,22 +24,23 @@ LOOP_TRAINING = True
 BORDER_TYPE = "MAXBEX"
 
 DATASET_LOOP = ["BL_FBMC_FULL"]
-MODEL_LOOP = ["Net"]
+MODEL_LOOP = ["LSTM"]
 CRITERIA_LOOP = [
     (nn.MSELoss, "MSELoss")
 ]
+SCALER = StandardScaler
 
 TRAIN_SPLIT = 0.90
-VALID_SPLIT = 0.25
-BATCH_SIZE = 64
-EPOCHS = 50
+VALID_SPLIT = 0.20
+BATCH_SIZE = 128
+EPOCHS = 100
 WEIGHT_DECAY = 3e-3
 LEARNING_RATE = 3e-4
 SEED = 42
-PCA_COMP = 64
-SEQ_LEN = 24
+PCA_COMP = 128
+SEQ_LEN = 8
 
-USE_PCA = False
+USE_PCA = True
 USE_RF_ONLY = False
 MAKE_PLOTS = True
 SHOW_PLOTS = False
@@ -250,11 +251,11 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS, border):
         X_train = pca.fit_transform(X_train)
         X_val = pca.transform(X_val)
     else:
-        X_scaler = StandardScaler()
+        X_scaler = SCALER()
         X_train = X_scaler.fit_transform(X_train)
         X_val = X_scaler.transform(X_val)
 
-    Y_scaler = StandardScaler()
+    Y_scaler = SCALER()
     Y_train = Y_scaler.fit_transform(Y_train)
     Y_val = Y_scaler.transform(Y_val)
 
@@ -294,7 +295,7 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS, border):
     best_val_r2 = -np.inf 
 
     if USE_PCA:
-        print(f"\n PCA ENABLED: Reduction from {input_dim} dim. to {PCA_COMP} dim. before feeding into Train Loop\n")
+        print(f"\n PCA ENABLED: Reduction to {PCA_COMP} dim. before feeding into Train Loop\n")
     else:
         print("\n PCA DISABLED\n")
     if MODEL_NAME == 'LSTM':
