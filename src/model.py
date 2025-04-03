@@ -1,12 +1,9 @@
 import torch
 import torch.nn as nn
-import xgboost as xgb
 from sklearn.multioutput import MultiOutputClassifier
 from sklearn.metrics import accuracy_score, classification_report
-from xgboost import XGBClassifier
 from sklearn.multioutput import MultiOutputClassifier
 from sklearn.metrics import accuracy_score, classification_report
-from xgboost import XGBClassifier
 
 class BaseModel(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -21,53 +18,49 @@ class Net(nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
 
-        self.fc1 = nn.Linear(input_dim, 4096)
-        self.batch_norm1 = nn.BatchNorm1d(4096)
+        self.fc1 = nn.Linear(input_dim, input_dim)
+        self.batch_norm1 = nn.BatchNorm1d(input_dim)
         self.dropout1 = nn.Dropout(p=0.2)
 
-        self.fc2 = nn.Linear(4096, 2048)
-        self.batch_norm2 = nn.BatchNorm1d(2048)
+        self.fc2 = nn.Linear(input_dim, input_dim)
+        self.batch_norm2 = nn.BatchNorm1d(input_dim)
         self.dropout2 = nn.Dropout(p=0.2)
 
-        self.fc3 = nn.Linear(2048, 1024)
-        self.batch_norm3 = nn.BatchNorm1d(1024)
+        self.fc3 = nn.Linear(input_dim, input_dim)
+        self.batch_norm3 = nn.BatchNorm1d(input_dim)
         self.dropout3 = nn.Dropout(p=0.2)
 
-        self.fc4 = nn.Linear(1024, 512)
-        self.batch_norm4 = nn.BatchNorm1d(512)
-        self.dropout4 = nn.Dropout(p=0.2) 
+        self.fc4 = nn.Linear(input_dim, input_dim)
+        self.batch_norm4 = nn.BatchNorm1d(input_dim)
 
-        self.fc5 = nn.Linear(512, 256)
-        self.batch_norm5 = nn.BatchNorm1d(256)
-        self.dropout5 = nn.Dropout(p=0.2)
+        self.fc5 = nn.Linear(input_dim, input_dim)
+        self.batch_norm5 = nn.BatchNorm1d(input_dim)
 
-        self.fc6 = nn.Linear(256, 128)
-        self.batch_norm6 = nn.BatchNorm1d(128)
+        self.fc6 = nn.Linear(input_dim, input_dim)
+        self.batch_norm6 = nn.BatchNorm1d(input_dim)
 
-        self.fc7 = nn.Linear(128, output_dim)
+        self.fc7 = nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
-        x = torch.nn.functional.leaky_relu(self.fc1(x), negative_slope=0.05)
+        x = torch.nn.functional.leaky_relu(self.fc1(x), negative_slope=0.01)
         x = self.batch_norm1(x)
         x = self.dropout1(x)
 
-        x = torch.nn.functional.leaky_relu(self.fc2(x), negative_slope=0.05)
+        x = torch.nn.functional.leaky_relu(self.fc2(x), negative_slope=0.01)
         x = self.batch_norm2(x)
         x = self.dropout2(x)
 
-        x = torch.nn.functional.leaky_relu(self.fc3(x), negative_slope=0.05)
+        x = torch.nn.functional.leaky_relu(self.fc3(x), negative_slope=0.01)
         x = self.batch_norm3(x)
         x = self.dropout3(x)
 
-        x = torch.nn.functional.leaky_relu(self.fc4(x), negative_slope=0.05)
+        x = torch.nn.functional.leaky_relu(self.fc4(x), negative_slope=0.01)
         x = self.batch_norm4(x)
-        x = self.dropout4(x)
 
-        x = torch.nn.functional.leaky_relu(self.fc5(x), negative_slope=0.05)
+        x = torch.nn.functional.leaky_relu(self.fc5(x), negative_slope=0.01)
         x = self.batch_norm5(x)
-        x = self.dropout5(x)
 
-        x = torch.nn.functional.leaky_relu(self.fc6(x), negative_slope=0.05)
+        x = torch.nn.functional.leaky_relu(self.fc6(x), negative_slope=0.01)
         x = self.batch_norm6(x)
 
         x = self.fc7(x)

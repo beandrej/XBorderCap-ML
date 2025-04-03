@@ -6,15 +6,15 @@ import config
 #from train_reg import TRAINING_SET, MODEL_NAME
 import data_loader
 from plotter_class import *
-import train_reg
+import train_FBMC
 
 MODEL_NAME = 'LSTM'
 TRAINING_SET = 'BL_FBMC_FULL'
 BORDER_TYPE = 'MAXBEX'
 LOSS = 'SmoothL1Loss'
 
-PCA_COMP = train_reg.PCA_COMP
-SEQ_LEN = train_reg.SEQ_LEN
+PCA_COMP = train_FBMC.PCA_COMP
+SEQ_LEN = train_FBMC.SEQ_LEN
 
 
 # Paths

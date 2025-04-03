@@ -60,6 +60,21 @@ class BaseData(Dataset):
         print(f"New range: {self.data.index.min()} to {self.data.index.max()}")
 
     def addTimeFeatures(self):
+        index = self.data.index
+
+        # Hour of day (0–23)
+        self.data["hour_sin"] = np.sin(2 * np.pi * index.hour / 24)
+        self.data["hour_cos"] = np.cos(2 * np.pi * index.hour / 24)
+
+        # Day of week (0–6)
+        self.data["dayofweek_sin"] = np.sin(2 * np.pi * index.dayofweek / 7)
+        self.data["dayofweek_cos"] = np.cos(2 * np.pi * index.dayofweek / 7)
+
+        # Day of year (1–365)
+        self.data["dayofyear_sin"] = np.sin(2 * np.pi * index.dayofyear / 365)
+        self.data["dayofyear_cos"] = np.cos(2 * np.pi * index.dayofyear / 365)
+
+    def addTimeFeaturesOld(self):
         self.data["hour"] = self.data.index.hour
         self.data["dayofweek"] = self.data.index.dayofweek  # Monday=0, Sunday=6
         self.data["month"] = self.data.index.month  # 1-12
@@ -67,7 +82,11 @@ class BaseData(Dataset):
         self.data["weekofyear"] = self.data.index.isocalendar().week.astype(int)  # 1-52
         self.data["is_weekend"] = (self.data.index.dayofweek >= 5).astype(int) 
     
-    def dropSparse(self, nan_threshold=0.5, zero_threshold=0.5):
+    def removeTimeFeatures(self):
+        time_features = ["hour", "dayofweek", "dayofyear"]
+        self.data.drop(columns=[col for col in time_features if col in self.data.columns], inplace=True)
+
+    def dropSparse(self, nan_threshold=0.5, zero_threshold=0.7):
         sparse_columns = self.data.columns[self.data.isna().mean() > nan_threshold]
         zero_columns = self.data.columns[(self.data == 0).mean() > zero_threshold]
 
@@ -176,8 +195,11 @@ class TypeData(BaseData):
         if loadCSV and os.path.exists(self.path):
             self.loadCSV()
         else:
-            #self.data = self.merge_all()
-            self.data = self.agg_gen()
+            if type == 'demand':
+                self.data = self.merge_all()
+            if type == 'generation_by_type' or type == 'generation_per_type':
+                self.data = self.agg_gen()
+                
             self.dropSparse()
             self.dropEX()
             self.cutDataset()
@@ -207,7 +229,7 @@ class TypeData(BaseData):
                     if self.source.lower() == 'entsoe':
                         df = df.add_prefix(f"{country_code}_")
                     else:
-                        df = df.add_prefix(f"{country_code}_")
+                        df = df.add_suffix(f"_actual_load")
                         
                     df = df.ffill().bfill() 
                     demand_data.append(df)
@@ -251,7 +273,7 @@ class TypeData(BaseData):
 
     def agg_gen(self):
         base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables', self.source, self.type)
-        merged_df = pd.DataFrame()
+        merged_data = pd.DataFrame()
 
         for file in os.listdir(base_path):
             if file.endswith(".csv"):
@@ -259,48 +281,53 @@ class TypeData(BaseData):
                 country = file.replace(".csv", "")
                 df = pd.read_csv(file_path, index_col=0, parse_dates=True)
                 df.index = pd.to_datetime(df.index).tz_localize(None)
-                self.data = df
+
+                df.columns = [f"{country}_{col}" for col in df.columns]
 
                 #self.dropSparse()
                 grouped_data = {
                     f"{country}_INFLEX": 0,
                     f"{country}_FLEX": 0,
                     f"{country}_NUC": 0,
-                    f"{country}_OTHER": 0
                 }
+                cols_to_drop = []  
 
                 for col in df.columns:
-                    if col.startswith("generation_"):
-                        category = "_".join(col.split("_")[1:]) 
+                    if col.startswith(f"{country}_generation_"):
+                        category = "_".join(col.split("_")[2:]) 
 
                         if category.startswith("wind") or category == "solar" or category.startswith("hydro_run"):
                             grouped_data[f"{country}_INFLEX"] += df[col].fillna(0)
-
-                        elif category.startswith("fossil") or category in ["hydro_water_reservoir", "hydro_pumped_storage"]:
+                            continue
+                            
+                        if category.startswith("fossil") or category in ["hydro_water_reservoir", "hydro_pumped_storage"]:
                             grouped_data[f"{country}_FLEX"] += df[col].fillna(0)
+                            continue
 
-                        elif category == "nuclear":
+                        if category == "nuclear":
                             grouped_data[f"{country}_NUC"] += df[col].fillna(0)
+                            continue
 
-                        else:
-                            grouped_data[f"{country}_OTHER"] += df[col].fillna(0)
+                        cols_to_drop.append(col)
 
+                df.drop(columns=cols_to_drop, inplace=True)
                 grouped_df = pd.DataFrame(grouped_data, index=df.index)
                 grouped_df[f"{country}_TOT_GEN"] = (
                     grouped_df[f"{country}_INFLEX"] +
                     grouped_df[f"{country}_FLEX"] +
-                    grouped_df[f"{country}_NUC"] +
-                    grouped_df[f"{country}_OTHER"]
+                    grouped_df[f"{country}_NUC"]
                 )
 
-                #full_df = pd.concat([df, grouped_df], axis=1)
+                full_df = pd.concat([df, grouped_df], axis=1)
 
-            if merged_df.empty:
-                merged_df = grouped_df
-            else:
-                merged_df = merged_df.merge(grouped_df, left_index=True, right_index=True, how="outer")
-            
-        return merged_df
+                # Merge with overall data
+                if merged_data.empty:
+                    merged_data = full_df
+                else:
+                    merged_data = merged_data.merge(full_df, left_index=True, right_index=True, how="outer")
+
+        self.data = merged_data
+        return self.data
 
     def residual_demand(self):
         base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables', self.source, self.type)

@@ -13,6 +13,12 @@ from model import HybridOutputMLP
 from sklearn.metrics import r2_score, mean_absolute_error, accuracy_score
 from sklearn.preprocessing import LabelEncoder
 
+#TODO Scale targets separately
+#TODO other gen data weglassen
+#TODO current max target scaler as input
+#TODO timestamps cosine scaling
+    # dayofyear, hours, weekday
+#TODO einzelne grenzen predicten
 
 """
 ************************************
@@ -31,7 +37,7 @@ CRITERIA_LOOP = [
 ]
 
 TRAINING_SET = "BL_NTC_FULL"
-MODEL_NAME = "HYBRID"
+MODEL_NAME = "Hybrid"
 CRITERION = nn.L1Loss
 
 TRAIN_SPLIT = 0.9
@@ -41,12 +47,12 @@ EPOCHS = 15
 WEIGHT_DECAY = 1e-3
 LEARNING_RATE = 3e-4
 SEED = 42
-SEQ_LEN = 24*7*2
+SEQ_LEN = 24
 UNIQUE_VAL_TRSH = 50
 
 USE_RF_ONLY = False
 MAKE_PLOTS = True
-SAVE_PLOTS = True
+SAVE_PLOTS = False
 
 
 """
@@ -174,6 +180,27 @@ def compute_global_mae(reg_preds, reg_trues, cls_preds, cls_trues):
 
 def main(TRAINING_SET, MODEL_NAME):
 
+    regression_metrics_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}')
+    class_metrics_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}')
+    metrics_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}')
+    model_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}')
+    model_config_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}/model_config')
+    classmapping_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}/mappings')    
+
+    regression_metrics_path = os.path.join(regression_metrics_base_path, f'metrics_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}_reg.csv')
+    class_metrics_path = os.path.join(class_metrics_base_path, f'metrics_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}_class.csv')
+    metrics_path_path = os.path.join(metrics_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}.csv")
+    model_path = os.path.join(model_base_path, f'{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}.pth')
+    model_config_path = os.path.join(model_config_base_path, f'params_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}.json')
+    classmapping_path = os.path.join(classmapping_base_path, f'cls_map_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}.json')    
+
+    os.makedirs(regression_metrics_base_path, exist_ok=True)
+    os.makedirs(class_metrics_base_path, exist_ok=True)
+    os.makedirs(metrics_path_base_path, exist_ok=True)
+    os.makedirs(model_base_path, exist_ok=True)
+    os.makedirs(model_config_base_path, exist_ok=True)
+    os.makedirs(classmapping_base_path, exist_ok=True)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     torch.manual_seed(SEED)
@@ -250,8 +277,8 @@ def main(TRAINING_SET, MODEL_NAME):
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
 
-    train_losses = []
-    val_losses = []
+    train_loss_scores = []
+    val_loss_scores = []
     train_r2_scores = []
     val_r2_scores = []
     train_acc_scores = []
@@ -264,6 +291,8 @@ def main(TRAINING_SET, MODEL_NAME):
     label_encoders = {}
     class_mappings = {}
 
+    best_val_loss = np.inf
+
     for col in cls_cols:
         le = LabelEncoder()
         Y_train[col] = le.fit_transform(Y_train[col])
@@ -274,7 +303,6 @@ def main(TRAINING_SET, MODEL_NAME):
         class_mappings[col] = mapping
 
     # Save to JSON
-    classmapping_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}/mappings', f'cls_map_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}.json')
     with open(classmapping_path, "w") as f:
         json.dump(class_mappings, f, indent=2)
 
@@ -321,6 +349,7 @@ def main(TRAINING_SET, MODEL_NAME):
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
+            train_loss_scores.append(train_loss)
 
             if len(reg_outs) > 0:
                 y_pred = torch.cat([out.detach().cpu() for out in reg_outs], dim=1)
@@ -359,7 +388,7 @@ def main(TRAINING_SET, MODEL_NAME):
                 per_head_train_accs.append(None)
 
         valid_train_accs = [acc for acc in per_head_train_accs if acc is not None]
-        mean_train_cls_acc = np.mean(valid_train_accs) if valid_train_accs else None
+        train_acc_scores.append(np.mean(valid_train_accs) if valid_train_accs else None)
 
 
 
@@ -401,6 +430,11 @@ def main(TRAINING_SET, MODEL_NAME):
                     loss += reg_criterions[i](out, target)
 
                 val_loss += loss.item()
+                val_loss_scores.append(val_loss)
+
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    torch.save(model.state_dict(), model_path)
 
                 if len(reg_outs) > 0:
                     y_pred = torch.cat([out.cpu() for out in reg_outs], dim=1)
@@ -439,14 +473,13 @@ def main(TRAINING_SET, MODEL_NAME):
                 per_head_val_accs.append(None)
 
         valid_accs = [acc for acc in per_head_val_accs if acc is not None]
-        mean_val_cls_acc = np.mean(valid_accs) if valid_accs else None
-
+        val_acc_scores.append(np.mean(valid_accs) if valid_accs else None)
         scheduler.step(val_loss)
 
         print(f"Epoch {epoch+1}/{EPOCHS} | "
             f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | "
             f"Train Reg R²: {train_r2:.4f} | Val Reg R²: {val_r2:.4f} | " # 
-            f"Train Cls Acc.: {mean_train_cls_acc:.4f} | Val Cls Acc.: {mean_val_cls_acc:.4f} | " # mean accuracy across all cls heads
+            f"Train Cls Acc.: {train_acc_scores[-1]:.4f} | Val Cls Acc.: {val_acc_scores[-1]:.4f} | " # mean accuracy across all cls heads
             f"Train Global MAE: {train_global_mae:.4f} | Val Global MAE : {val_global_mae:.4f}") # mean absolute error across all cols
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
@@ -482,6 +515,8 @@ def main(TRAINING_SET, MODEL_NAME):
             plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
             plt.tight_layout()
             plt.grid(True)
+            if SAVE_PLOTS:
+                plt.savefig()
             plt.show()
 
         if cls_cols:
@@ -495,6 +530,8 @@ def main(TRAINING_SET, MODEL_NAME):
             plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
             plt.tight_layout()
             plt.grid(True)
+            if SAVE_PLOTS:
+                plt.savefig()
             plt.show()
 
     """
@@ -506,7 +543,6 @@ def main(TRAINING_SET, MODEL_NAME):
     if reg_cols:
         regression_metrics = pd.DataFrame(val_r2_scores, columns=[f"{col}_R2" for col in reg_cols])
         regression_metrics.insert(0, "Epoch", list(range(1, len(regression_metrics) + 1)))
-        regression_metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f'metrics_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}_reg.csv')
         regression_metrics.to_csv(regression_metrics_path, index=False)
         print("Saved regression metrics to regression_metrics.csv")
 
@@ -514,14 +550,11 @@ def main(TRAINING_SET, MODEL_NAME):
         acc_data = {f"{col}_Accuracy": val_cls_accs[i] for i, col in enumerate(cls_cols)}
         classification_metrics = pd.DataFrame(acc_data)
         classification_metrics.insert(0, "Epoch", list(range(1, len(classification_metrics) + 1)))
-        class_metrics_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f'metrics_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}_class.csv')
         classification_metrics.to_csv(class_metrics_path, index=False)
         print("Saved classification metrics to classification_metrics.csv")
 
     # Save final model
-    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}', f'{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}.pth')
     torch.save(model.state_dict(), model_path)
-
 
     model_config = {
     "input_dim": X_tensor_train.shape[1],
@@ -536,21 +569,20 @@ def main(TRAINING_SET, MODEL_NAME):
         json.dump(model_config, f)
     print("Saved model json config")
 
-    epochs_list = list(range(1, EPOCHS + 1))
     metrics_df = pd.DataFrame({
         'epoch': list(range(1, EPOCHS + 1)),
         'train_r2': train_r2_scores,
         'val_r2': val_r2_scores,
         'train_global_mae': train_global_mae_scores,
         'val_global_mae': val_global_mae_scores,
-        'train_cls_acc': [np.mean([a for a in accs if a is not None]) for accs in zip(*train_cls_accs)],
-        'val_cls_acc': [np.mean([a for a in accs if a is not None]) for accs in zip(*val_cls_accs)],
+        'train_cls_acc': train_acc_scores,
+        'val_cls_acc': val_acc_scores,
     })
 
-    csv_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}', f'metrics_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}')
-    csv_path = os.path.join(csv_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}.csv")
+    csv_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}')
+    csv_path = os.path.join(csv_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{UNIQUE_VAL_TRSH}.csv")
     os.makedirs(csv_path_base_path, exist_ok=True)
-    metrics_df.to_csv(csv_path, index=False)
+    metrics_df.to_csv(metrics_path_path, index=False)
     print(f"Metrics saved to: {csv_path}") 
 
 """

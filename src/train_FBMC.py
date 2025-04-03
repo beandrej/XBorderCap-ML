@@ -29,8 +29,8 @@ CRITERIA_LOOP = [
     (nn.MSELoss, "MSELoss")
 ]
 
-TRAIN_SPLIT = 0.95
-VALID_SPLIT = 0.10
+TRAIN_SPLIT = 0.90
+VALID_SPLIT = 0.25
 BATCH_SIZE = 64
 EPOCHS = 50
 WEIGHT_DECAY = 3e-3
@@ -39,7 +39,7 @@ SEED = 42
 PCA_COMP = 64
 SEQ_LEN = 24
 
-USE_PCA = True
+USE_PCA = False
 USE_RF_ONLY = False
 MAKE_PLOTS = True
 SHOW_PLOTS = False
@@ -49,6 +49,8 @@ SHOW_PLOTS = False
     HELPER FUNC
 ************************************
 """
+
+#TODO Scale targets separately
 
 class SequenceDataset(Dataset):
     def __init__(self, X, Y, seq_len):
@@ -161,11 +163,11 @@ def plotR2(metrics_df, dataset, model, loss, saveFig=True, showPlot=False):
     if saveFig: plt.savefig(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/plots/training/r2', f"{model}_{dataset}_{loss}_R2Score.png"), dpi=300, bbox_inches='tight')
     if showPlot: plt.show()     
 
-def buildTrainValDataset(dataset):
+def buildTrainValDataset(dataset, border):
     df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', f"{dataset}.csv"), index_col=0)
-    #df = safe_downcast_floats(df)
     print(f"\n USING DATASET: {dataset}\n")
-    print_nan_summary(df)
+    #print_nan_summary(df)
+
     # Dataset X & Y has to merged (only use intersecting timestamps), they are separated again here..
     if BORDER_TYPE == "MAXBEX":
         first_target_idx = df.columns.get_loc("AUS_CZE")
@@ -176,6 +178,8 @@ def buildTrainValDataset(dataset):
 
     X = df.iloc[:, :first_target_idx]
     Y = df.iloc[:, first_target_idx:]
+    if border is not None:
+        Y = Y[[border]]
 
     split_index = int(len(df) * TRAIN_SPLIT)
     val_index = int(split_index * (1 - VALID_SPLIT))
@@ -189,10 +193,7 @@ def buildTrainValDataset(dataset):
     X_val = X_train_full.iloc[val_index:]
     Y_val = Y_train_full.iloc[val_index:]
 
-    print("Shape of X_train:", X_train.shape) 
-    print("Shape of Y_train:", Y_train.shape) 
-    print("Shape of X_val:", X_val.shape) 
-    print("Shape of Y_val:", Y_val.shape) 
+
     
     return X_train, Y_train, X_val, Y_val
 
@@ -203,23 +204,23 @@ def buildTrainValDataset(dataset):
 """
 
 
-def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
+def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS, border):
 
     if MODEL_NAME == 'LSTM':
         torch_model_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}')
-        csv_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}')
-        torch_model_path = os.path.join(torch_model_base_path, f"{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}_{SEQ_LEN}.pth")
-        csv_path = os.path.join(csv_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}_{SEQ_LEN}.csv")
+        metrics_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}/SEQ_LEN={SEQ_LEN}')
+        torch_model_path = os.path.join(torch_model_base_path, f"{MODEL_NAME}_{TRAINING_SET}_{border}_{CRITERION_CLASS().__class__.__name__}_{SEQ_LEN}.pth")
+        metrics_path = os.path.join(metrics_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{border}_{CRITERION_CLASS().__class__.__name__}_{SEQ_LEN}.csv")
     else:
         torch_model_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'../model_params/{BORDER_TYPE}/{MODEL_NAME}')
-        csv_path_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}')
-        torch_model_path = os.path.join(torch_model_base_path, f"{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}.pth")
-        csv_path = os.path.join(csv_path_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{CRITERION_CLASS().__class__.__name__}.csv")
+        metrics_base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'results/model_metrics/{BORDER_TYPE}/{MODEL_NAME}')
+        torch_model_path = os.path.join(torch_model_base_path, f"{MODEL_NAME}_{TRAINING_SET}_{border}_{CRITERION_CLASS().__class__.__name__}.pth")
+        metrics_path = os.path.join(metrics_base_path, f"metrics_{MODEL_NAME}_{TRAINING_SET}_{border}_{CRITERION_CLASS().__class__.__name__}.csv")
 
     summaryXLSX_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results/model_metrics', "00_summary.xlsx")
 
     os.makedirs(torch_model_base_path, exist_ok=True)
-    os.makedirs(csv_path_base_path, exist_ok=True)
+    os.makedirs(metrics_base_path, exist_ok=True)
     os.makedirs(os.path.dirname(summaryXLSX_path), exist_ok=True)
     
     if USE_RF_ONLY:
@@ -237,7 +238,12 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-    X_train, Y_train, X_val, Y_val = buildTrainValDataset(TRAINING_SET)
+    X_train, Y_train, X_val, Y_val = buildTrainValDataset(TRAINING_SET, border)
+
+    print("Shape of X_train:", X_train.shape) 
+    print("Shape of Y_train:", Y_train.shape) 
+    print("Shape of X_val:", X_val.shape) 
+    print("Shape of Y_val:", Y_val.shape) 
 
     if USE_PCA:
         pca = PCA(n_components=PCA_COMP) 
@@ -287,9 +293,14 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
     val_mae_scores = []
     best_val_r2 = -np.inf 
 
-    print(f"\nStarting Training: \n \n Train Split: {int(TRAIN_SPLIT*100)}% | Val Split: {int(VALID_SPLIT*100)}%")
+    if USE_PCA:
+        print(f"\n PCA ENABLED: Reduction from {input_dim} dim. to {PCA_COMP} dim. before feeding into Train Loop\n")
+    else:
+        print("\n PCA DISABLED\n")
+    if MODEL_NAME == 'LSTM':
+        print(f"\nLSTM Model with SEQ_LEN = {SEQ_LEN}\n")
+    print(f"\nStarting Training: \n \nTrain Split: {int(TRAIN_SPLIT*100)}% | Val Split: {int(VALID_SPLIT*100)}%")
     print(f"Batch size: {BATCH_SIZE} | Weight Decay: {WEIGHT_DECAY} | Learning Rate: {LEARNING_RATE}")
-    print(f"Sequence L (LSTM): {SEQ_LEN} | PCA Reduction: {PCA_COMP}\n")
 
     """
     ************************************************************************************************************************************************************************************
@@ -402,50 +413,18 @@ def main(TRAINING_SET, MODEL_NAME, CRITERION_CLASS):
         
     })
 
-    summary_data = {
-        'ModelType': MODEL_NAME,
-        'Dataset': TRAINING_SET,
-        'Loss Criterion': criterion.__class__.__name__,
-        'Learning Rate': f"{LEARNING_RATE:.6f}",
-        'Weight Decay': f"{WEIGHT_DECAY:.6f}",
-        'Train Split': TRAIN_SPLIT,
-        'Val Split' : VALID_SPLIT,
-        'Batch size': BATCH_SIZE,
-        'Epochs': EPOCHS,
-        'Train loss': round(train_losses[-1], 2),
-        'Train loss MIN': round(min(train_losses), 2),
-        'Val loss': round(val_losses[-1], 2),
-        'Val loss MIN': round(min(val_losses), 2),
-        'Train-R2-Score': round(train_r2_scores[-1], 2),
-        'Val-R2-Score' : round(val_r2_scores[-1], 2),
-        'Train-MAE': round(train_mae_scores[-1], 3),
-        'Val-MAE' : round(val_mae_scores[-1], 3)
-    }
-
     if MAKE_PLOTS:
         plotTrainValLoss(metrics_df, criterion.__class__.__name__, TRAINING_SET, MODEL_NAME)
         plotR2(metrics_df, TRAINING_SET, MODEL_NAME, criterion.__class__.__name__)
 
-
-    summary_df = pd.DataFrame([summary_data])
-
-    if os.path.exists(summaryXLSX_path):
-        existing_df = pd.read_excel(summaryXLSX_path)
-        combined_df = pd.concat([existing_df, summary_df], ignore_index=True)
-    else:
-        combined_df = summary_df
-
-    combined_df.to_excel(summaryXLSX_path, index=False)
-    print(f"Updated summary saved to: {summaryXLSX_path}")
-
-    metrics_df.to_csv(csv_path, index=False)
-    print(f"Metrics saved to: {csv_path}")
-
-
+    metrics_df.to_csv(metrics_path, index=False)
+    print(f"Metrics saved to: {metrics_path}")
 
 if __name__ == "__main__":
     for loss, loss_name in CRITERIA_LOOP:
         for model_name in MODEL_LOOP:
             for dataset in DATASET_LOOP:
-                print(f"\n====== Running Loop with {model_name} on {dataset} with {loss_name} ======\n")
-                main(dataset, model_name, loss)
+                _, Y_all, _, _ = buildTrainValDataset(dataset, border=None)  # Get all target names
+                for target_col in Y_all.columns:
+                    print(f"\n====== Training {model_name} on {dataset} | Target: {target_col} | Loss: {loss_name} ======\n")
+                    main(dataset, model_name, loss, target_col)

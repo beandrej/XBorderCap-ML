@@ -9,15 +9,15 @@ from torch.utils.data import TensorDataset, DataLoader
 from model import *
 import config
 import data_loader
-import train_reg
+import train_FBMC
 
 MODEL_NAME = 'Net'
 BORDER_TYPE = 'MAXBEX'
 LOSS = 'SmoothL1Loss'
 TRAINING_SET = 'BL_FBMC_FULL'
 
-PCA_COMP = train_reg.PCA_COMP
-SEQ_LEN = train_reg.SEQ_LEN
+PCA_COMP = train_FBMC.PCA_COMP
+SEQ_LEN = train_FBMC.SEQ_LEN
 
 
 if MODEL_NAME == 'LSTM':
@@ -43,7 +43,7 @@ else:
 X = full_df.iloc[:, :first_target_idx]
 Y = full_df.iloc[:, first_target_idx:]
 
-split_index = int(len(full_df) * train_reg.TRAIN_SPLIT)
+split_index = int(len(full_df) * train_FBMC.TRAIN_SPLIT)
 X_test = X.iloc[split_index:]
 Y_test = Y.iloc[split_index:]
 
@@ -59,7 +59,7 @@ Y_test_tensor = torch.tensor(Y_test_scaled, dtype=torch.float32)
 
 test_dataset = TensorDataset(X_test_tensor, Y_test_tensor)
 
-test_loader = DataLoader(test_dataset, batch_size=train_reg.BATCH_SIZE, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=train_FBMC.BATCH_SIZE, shuffle=False)
 
 test_indices = range(split_index, len(full_df))
 test_timestamps = full_df.index[test_indices]

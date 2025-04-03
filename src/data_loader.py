@@ -18,7 +18,7 @@ def main():
     """
 
 
-    #created = TypeData('entsoe', 'generation_per_type', 'AGG_GEN_EE', loadCSV=False, saveCSV=True)
+    #created = TypeData('entsoe', 'demand', 'AGG_DEM_EE', loadCSV=False, saveCSV=True)
     # created.printStats()
     # created.cutDataset(start_date='2020-01-01 00:00:00', end_date=NTC_END)
     # created.printStats()
@@ -67,9 +67,8 @@ def main():
 
     # pop = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables/country', "population.csv"))
     # area = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../01_data/01_feature_variables/country', "area.csv"))
-
     # merged = pd.merge(area, pop, left_on="zoneName", right_on="zone", how='inner')
-    # merged = merged.drop(columns=["zone"])
+    # merged = merged.drop(columns=["zone", "Unnamed: 0"])
     # merged.to_csv('sss.csv')
 
 
@@ -114,10 +113,13 @@ def main():
     """
 
 
-    # df = BaseData('GENLOAD_GNLD_AREA_TIME')
+    #df = BaseData('GNLD_FBMC')
+    # df.removeTimeFeatures()
     # df.addTimeFeatures()
     # df.saveCSV()
-    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BASELINE_MAXBEX_GENLOAD_AGG.csv"), index_col=0)
+    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
+    # df = df.drop(columns=['BE_to_NL', 'NL_to_BE', 'NL_to_DE_LU', 'DE_LU_to_NL'])
+    # df.to_csv('axyya.csv')
 
 
     # selected_columns = ['GER_INFLEX', 'GER_IEX']
@@ -168,26 +170,26 @@ def main():
     #   MERGER
     #*****************************************************************************************************************
     """
-    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_GNLD.csv"), index_col=0)
-    # df = df.drop(columns=[col for col in df.columns if col.endswith("_actual_load")])
-    # df.to_csv('aaa.csv')
+    # # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_GNLD.csv"), index_col=0)
+    # # df = df.drop(columns=[col for col in df.columns if col.endswith("_actual_load")])
+    # # df.to_csv('aaa.csv')
 
-    # gen_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "AGG_GENLOAD.csv"), index_col=0)
-    # gen_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAXBEX.csv"), index_col=0)
-    # dem_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data/subsets', "DEM_TOT.csv"), index_col=0)
-    # dem_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data/old', "TEMP.csv"), index_col=0)
+    # gen_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GNLD_FBMC.csv"), index_col=0)
+    # gen_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "WEATHER.csv"), index_col=0)
+    # dem_ee = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "MAXBEX.csv"), index_col=0)
+    # #dem_np = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "NTC.csv"), index_col=0)
 
     # common_index = gen_ee.index.intersection(gen_np.index)
     # common_index = common_index.intersection(dem_ee.index)
-    # common_index = common_index.intersection(dem_np.index)
+    # #common_index = common_index.intersection(dem_np.index)
 
     # gen_ee = gen_ee.loc[common_index]
     # gen_np = gen_np.loc[common_index]
     # dem_ee = dem_ee.loc[common_index]
-    # dem_np = dem_np.loc[common_index]
+    # #dem_np = dem_np.loc[common_index]
 
-    # merged_df = pd.concat([gen_ee, gen_np], axis=1)
-    # output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "AGG_FBMC.csv")
+    # merged_df = pd.concat([gen_ee, gen_np, dem_ee], axis=1)
+    # output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BL_FBMC_FULL.csv")
     # merged_df.to_csv(output_path)
     
 
@@ -197,7 +199,7 @@ def main():
     #***********************************************"
     """
 
-    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_INFLEX.csv"), index_col=0)
+    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "GENLOAD_FBMC.csv"), index_col=0)
 
     # countries = set(col.split('_')[0] for col in df.columns)
 
@@ -228,7 +230,7 @@ def main():
 
     #         # ✅ RES_LOAD_GRAD = difference (signed) between timesteps
     #         df[f"{country}_RES_LOAD_GRAD"] = df[res_load_col].diff().fillna(0)
-    #df = BaseData('BL_FBMC_FULL')
+
     # # # Reorder columns
     # df.to_csv("updated_dataframe.csv")
     # print("Updated dataframe saved as 'updated_dataframe4.csv'")
@@ -241,23 +243,20 @@ def main():
     # df = BaseData('BL_FBMC_FULL')
     # df2 = BaseData('BL_FBMC')
     # df3 = BaseData('AGG_FBMC')
-    df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BL_FBMC_FULL.csv"), index_col=0)
-    # df = df[df["GBR_OG_OTHER"] != 0]
+    # df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "BL_FBMC_FULL.csv"), index_col=0)
 
-    # df.drop(columns=["GBR_OG_INFLEX", "GBR_OG_FLEX", "GBR_OG_NUC", "GBR_OG_OTHER"], inplace=True, errors='ignore')
-    # df.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../prep_data', "AGG_NTC2.csv"))
-
-    plt.figure(figsize=(14, 5))
-    #plt.plot(range(len(df)), df['GBR_OG_OTHER'], label='OG')
-    plt.plot(range(len(df)), df['GER_generation_nuclear'], label='GER_generation_nuclear')
-    #plt.plot(range(len(df)), df['NO2_FLEX'], label='NO2_FLEX')
-    plt.xlabel('Timestamp')
-    plt.ylabel('Generation [MWh]')
-    plt.title('Most Important columns from RF Analysis')
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
+    # plt.figure(figsize=(14, 5))
+    # #plt.plot(range(len(df)), df['GBR_OG_OTHER'], label='OG')
+    # plt.plot(range(len(df)), df['dayofweek_sin'], label='1')
+    # plt.plot(range(len(df)), df['dayofweek_cos'], label='1')
+    # #plt.plot(range(len(df)), df['NO2_FLEX'], label='NO2_FLEX')
+    # plt.xlabel('Timestamp')
+    # plt.ylabel('Generation [MWh]')
+    # plt.title('Most Important columns from RF Analysis')
+    # plt.grid(True)
+    # plt.legend()
+    # plt.tight_layout()
+    # plt.show()
 
 
     # dfData = BaseData('BASELINE_MAXBEX_WITH_NTC_GENLOAD_AGG')

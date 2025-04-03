@@ -6,7 +6,7 @@ from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import TensorDataset, DataLoader
 from model import HybridOutputMLP
-from train_reg import TRAIN_SPLIT, BATCH_SIZE
+from train_FBMC import TRAIN_SPLIT, BATCH_SIZE
 import json
 
 # --- CONFIG ---
