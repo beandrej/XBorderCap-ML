@@ -3,8 +3,14 @@ __pycache__/
 *.pyo
 *.pyd
 *.csv
+
 01_data/
 lit/
-XBorderCap-ML/
 model_params/
 prep_data/
+
+src/training/__pycache__
+src/data/__pycache__
+src/utils/__pycache__
+src/results/
+src/__pycache__
