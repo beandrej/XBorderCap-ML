@@ -1,54 +1,12 @@
 import os
+import sys; sys.dont_write_bytecode = True
 import numpy as np
 import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
-
-class PredictionPlot():
-    def __init__(self, pred_path, true_path, target_col_start):
-        full_df = pd.read_csv(true_path, index_col=0)
-        target_idx = full_df.columns.get_loc(target_col_start)
-        y_true = full_df.iloc[:, target_idx:].reset_index()
-        y_pred = pd.read_csv(pred_path)
-        
-        self.comp_df = pd.merge(y_true, y_pred, on="timestamp", how='inner')
-        self.comp_df["timestamp"] = pd.to_datetime(self.comp_df["timestamp"])
-
-    def plot_border(self, border, save_path=None, save_plot=False, show_plot=True):
-        fig = go.Figure()
-
-        fig.add_trace(go.Scatter(
-            x=self.comp_df["timestamp"],
-            y=self.comp_df[border],
-            mode='lines',
-            name='Actual Capacity',
-            line=dict(color='blue')
-        ))
-
-        fig.add_trace(go.Scatter(
-            x=self.comp_df["timestamp"],
-            y=self.comp_df[f"{border}_pred"],
-            mode='lines',
-            name='Predicted Capacity',
-            line=dict(color='red', dash='dash')
-        ))
-
-        fig.update_layout(
-            title=f"{border} Predicted vs. Actual Capacity",
-            xaxis_title="Timestamp",
-            yaxis_title="Cross-Border Capacity [MW]",
-            legend=dict(x=0.01, y=0.99),
-            hovermode="x unified",
-            template='plotly_white'
-        )
-
-        if save_plot and save_path:
-            fig.write_html(save_path.replace(".png", ".html"))
-            print("Interactive plot saved at:", save_path.replace(".png", ".html"))
-
-        if show_plot:
-            fig.show()
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import config
 
 class SingleMetricPlot():
     def __init__(self, model, dataset, metrics_path, save_path):
@@ -176,30 +134,62 @@ class CompareDFMetricsPlot():
         else:
             plt.close()
 
-def plotActualVsPredicted(df, timestamp_col, actual_col, pred_col, title=None, figsize=(12, 5)):
-    """
-    Plots actual vs predicted values over time.
-    df: DataFrame with predictions and ground truth
-    timestamp_col: column name for the x-axis (usually a datetime index or column)
-    actual_col: name of the actual values column
-    pred_col: name of the predicted values column
-    """
+def getTrainMetricsPath(dataset, model, border):
+    base_dir = config.PROJECT_ROOT
+    border_type = dataset.split('_')[1]
+
+    if model == 'LSTM':
+        model_metrics_path = os.path.join(base_dir, f'src/results/model_metrics/{border_type}/{model}', f'{config.SEQ_LEN}/metrics_{model}_{dataset}_{border}.csv')
+    elif model == 'Hybrid':
+        model_metrics_path = os.path.join(base_dir, f'src/results/model_metrics/{border_type}/{model}', f'metrics_{model}_{dataset}_{border}_{config.UNIQUE_VAL_TRSH}.csv')
+    else:
+        model_metrics_path = os.path.join(base_dir, f'src/results/model_metrics/{border_type}/{model}', f'metrics_{model}_{dataset}_{border}.csv')
+
+    return model_metrics_path
+
+def mergePredictions(dataset, model):
+    pred_path = os.path.join(config.PROJECT_ROOT, f'src/results/predictions_csv/{model}', f'pred_{model}_{dataset}.csv')
+    true_path = os.path.join(config.PROJECT_ROOT, 'prep_data', f"{dataset}.csv")
+    pred_df = pd.read_csv(pred_path)
+    true_df = pd.read_csv(true_path)
+    pred_df.index = pd.to_datetime(pred_df.index)
+    true_df.index = pd.to_datetime(true_df.index)
+
+    merged_df = pd.merge(pred_df, true_df, left_index=True, right_index=True, how='inner')
+    return merged_df
+
+def plotActualVsPredicted(dataset, models, border, multi_model=False, figsize=(12, 5)):
+    
+    border_type = dataset.split('_')[1]
+
+    if models == 'LSTM':
+        fig_base_path = os.path.join(config.PROJECT_ROOT, f'src/results/plots/pred/{border_type}/{models}/{config.SEQ_LEN}')
+        os.makedirs(fig_base_path, exist_ok=True)
+    else:
+        fig_base_path = os.path.join(config.PROJECT_ROOT, f'src/results/plots/pred/{border_type}/{models}')
+        os.makedirs(fig_base_path, exist_ok=True)
+    fig_path = os.path.join(fig_base_path, f'pred_{models}_{dataset}_{border}.png')
+
+
+    df = mergePredictions(dataset, models)
     plt.figure(figsize=figsize)
-    plt.plot(df[timestamp_col], df[actual_col], label='Actual', linewidth=2)
-    plt.plot(df[timestamp_col], df[pred_col], label='Predicted', linestyle='--', alpha=0.8)
-    plt.title(title or f"Actual vs Predicted - {actual_col}")
+    plt.plot(df.index, df[f'{border}'], label='Actual', linewidth=2, color='blue')
+    plt.plot(df.index, df[f'{border}_pred'], label='Predicted', linestyle='--', color='red', alpha=0.7)
+    plt.title(f"Actual vs Predicted Capacity - {border}")
     plt.xlabel("Timestamp")
-    plt.ylabel("Capacity")
+    plt.ylabel("Normalized Capacity")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.show()
+
+    if config.SAVE_PLOTS:
+        plt.savefig(fig_path)
+    if config.SHOW_PLOTS: 
+        plt.show()
+    else:
+        plt.close()
 
 def plotR2MaeOverEpochs(df, title=None, figsize=(12, 5)):
-    """
-    Plots R² and MAE (train & validation) across epochs.
-    df: DataFrame with columns: 'epoch', 'train_r2', 'val_r2', 'train_global_mae', 'val_global_mae'
-    """
     fig, axs = plt.subplots(1, 2, figsize=figsize)
 
     axs[0].plot(df['epoch'], df['train_r2'], label='Train R²')
@@ -223,10 +213,6 @@ def plotR2MaeOverEpochs(df, title=None, figsize=(12, 5)):
     plt.show()
 
 def compareModelsR2MaeSummary(metrics_dict, title_prefix="Model Comparison"):
-    """
-    Plots min MAE and max R² for multiple models.
-    metrics_dict: dict with model name -> DataFrame with train/val R² and MAE per epoch
-    """
     summary = []
     for model_name, df in metrics_dict.items():
         summary.append({
@@ -254,10 +240,6 @@ def compareModelsR2MaeSummary(metrics_dict, title_prefix="Model Comparison"):
     plt.show()
 
 def plotHybridClassificationHeatmap(df, value_col='val_cls_acc', index_col='border', columns_col='model', title=None):
-    """
-    Heatmap of classification accuracy or regression R² across borders and models (for Hybrid).
-    df: DataFrame with one row per (border, model) combination
-    """
     heatmap_data = df.pivot(index=index_col, columns=columns_col, values=value_col)
     plt.figure(figsize=(10, len(heatmap_data)*0.5))
     sns.heatmap(heatmap_data, annot=True, cmap='coolwarm', fmt='.2f', linewidths=0.5)
@@ -266,10 +248,6 @@ def plotHybridClassificationHeatmap(df, value_col='val_cls_acc', index_col='bord
     plt.show()
 
 def compareDatasetsBoxplot(df, metric_col='val_r2', group_col='dataset_type', hue_col='model', title=None):
-    """
-    Boxplot comparison for BL vs FX or other dataset categories.
-    df: DataFrame with 'dataset_type', 'model', and metric columns
-    """
     plt.figure(figsize=(10, 5))
     sns.boxplot(data=df, x=group_col, y=metric_col, hue=hue_col)
     plt.title(title or f"{metric_col} by Dataset Type")
