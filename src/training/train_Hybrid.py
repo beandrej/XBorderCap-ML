@@ -19,6 +19,13 @@ from utils.train_utils import (
     setSeed
 )
 
+"""
+************************************************************************************************************************************************************************************
+                                                                        PRE-PROCESSING
+************************************************************************************************************************************************************************************
+"""
+
+
 def main(dataset, model_name, border):
 
     setSeed()
@@ -75,7 +82,6 @@ def main(dataset, model_name, border):
                                                                         TRAINING LOOP
     ************************************************************************************************************************************************************************************
     """
-
 
     for epoch in range(config.EPOCHS):
         model.train()
@@ -245,14 +251,12 @@ def main(dataset, model_name, border):
         if (epoch + 1) % 5 == 0:
             log = f"Epoch {epoch+1}/{config.EPOCHS} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | "
 
-            # Add regression metrics if present
             if reg_cols:
                 train_r2_mean = train_r2 if isinstance(train_r2, float) else np.mean(train_r2)
                 val_r2_mean = np.mean(val_r2_scores[-1]) if isinstance(val_r2_scores[-1], list) else val_r2_scores[-1]
                 log += f"Train Reg R²: {train_r2_mean:.4f} | Val Reg R²: {val_r2_mean:.4f} | "
                 log += f"Train MAE: {train_global_mae:.4f} | Val MAE: {val_global_mae:.4f} | "
 
-            # Add classification metrics if present
             if cls_cols:
                 train_acc = f"{train_acc_scores[-1]:.4f}" if train_acc_scores[-1] is not None else "N/A"
                 val_acc = f"{val_acc_scores[-1]:.4f}" if val_acc_scores[-1] is not None else "N/A"
