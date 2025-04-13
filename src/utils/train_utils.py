@@ -16,7 +16,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_absolute_error, r2_score
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils.plot_utils_old import plotLagCorr
+from utils.plot_utils import plotLagCorr
 import config
 from model import getModel
 
