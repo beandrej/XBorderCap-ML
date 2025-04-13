@@ -1,9 +1,22 @@
 import torch
 import torch.nn as nn
-from sklearn.multioutput import MultiOutputClassifier
-from sklearn.metrics import accuracy_score, classification_report
-from sklearn.multioutput import MultiOutputClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+
+class ResidualBlock(nn.Module):
+    def __init__(self, dim, dropout=0.1):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.BatchNorm1d(dim),
+            nn.LeakyReLU(0.03),
+            nn.Dropout(dropout),
+            nn.Linear(dim, dim),
+            nn.BatchNorm1d(dim),
+        )
+        self.activation = nn.LeakyReLU(0.03)
+
+    def forward(self, x):
+        return self.activation(self.block(x) + x)
 
 class BaseModel(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -16,160 +29,128 @@ class BaseModel(nn.Module):
     
 class Net(nn.Module):
     def __init__(self, input_dim, output_dim):
+        from config import HIDDEN_DIM, DROPOUT
         super().__init__()
+        self.input_proj = nn.Linear(input_dim, HIDDEN_DIM)
 
-        self.fc1 = nn.Linear(input_dim, input_dim)
-        self.batch_norm1 = nn.BatchNorm1d(input_dim)
-        self.dropout1 = nn.Dropout(p=0.2)
+        layers = []
+        num_layers = 7
+        for i in range(num_layers):
+            layers.append(nn.Linear(HIDDEN_DIM, HIDDEN_DIM))
+            layers.append(nn.LayerNorm(HIDDEN_DIM))
+            layers.append(nn.GELU())
 
-        self.fc2 = nn.Linear(input_dim, input_dim)
-        self.batch_norm2 = nn.BatchNorm1d(input_dim)
-        self.dropout2 = nn.Dropout(p=0.2)
+            if i >= num_layers - 2:
+                layers.append(nn.Dropout(DROPOUT))
 
-        self.fc3 = nn.Linear(input_dim, input_dim)
-        self.batch_norm3 = nn.BatchNorm1d(input_dim)
-
-        self.fc4 = nn.Linear(input_dim, input_dim)
-        self.batch_norm4 = nn.BatchNorm1d(input_dim)
-
-        self.fc5 = nn.Linear(input_dim, output_dim)
+        self.body = nn.Sequential(*layers)
+        self.output_layer = nn.Linear(HIDDEN_DIM, output_dim)
 
     def forward(self, x):
-        x = torch.nn.functional.leaky_relu(self.fc1(x), negative_slope=0.01)
-        x = self.batch_norm1(x)
-        x = self.dropout1(x)
-
-        x = torch.nn.functional.leaky_relu(self.fc2(x), negative_slope=0.01)
-        x = self.batch_norm2(x)
-        x = self.dropout2(x)
-
-        x = torch.nn.functional.leaky_relu(self.fc3(x), negative_slope=0.01)
-        x = self.batch_norm3(x)
-
-        x = torch.nn.functional.leaky_relu(self.fc4(x), negative_slope=0.01)
-        x = self.batch_norm4(x)
-
-        x = self.fc5(x)
-        return x
+        x = self.input_proj(x)
+        x = self.body(x)
+        return self.output_layer(x)
 
 class LSTM(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim=128, num_layers=3, dropout=0.15):
-        super(LSTM, self).__init__()
-
-        self.hidden_dim = hidden_dim
-        self.num_layers = num_layers
-        self.bidirectional = True
-        self.num_directions = 2 if self.bidirectional else 1
-
+    def __init__(self, input_dim, output_dim, num_layers=3, bidirectional=True):
+        from config import HIDDEN_DIM, DROPOUT
+        super().__init__()
         self.lstm = nn.LSTM(
             input_size=input_dim,
-            hidden_size=hidden_dim,
+            hidden_size=HIDDEN_DIM,
             num_layers=num_layers,
             batch_first=True,
-            dropout=dropout,
-            bidirectional=self.bidirectional
+            dropout=DROPOUT if num_layers > 1 else 0.0,
+            bidirectional=bidirectional
         )
-        self.attn = nn.Linear(hidden_dim * self.num_directions, 1)
-        self.output = nn.Sequential(
-            nn.Linear(hidden_dim * self.num_directions, 256),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(256, output_dim)
+        self.norm = nn.LayerNorm(HIDDEN_DIM * 2)
+        self.fc = nn.Linear(
+            HIDDEN_DIM * (2 if bidirectional else 1),
+            output_dim
         )
 
-    def forward(self, x):
-        # x: [batch_size, seq_len, input_dim]
-        B, T, D = x.size()
+    def forward(self, x, lengths):
+        # x: (B, T, input_dim)
+        packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False)
+        packed_out, _ = self.lstm(packed)
+        out, _ = pad_packed_sequence(packed_out, batch_first=True)
 
-        h0 = torch.zeros(self.num_layers * self.num_directions, B, self.hidden_dim).to(x.device)
-        c0 = torch.zeros(self.num_layers * self.num_directions, B, self.hidden_dim).to(x.device)
+        # Use mean over time (ignoring padded parts)
+        mask = torch.arange(out.size(1), device=x.device)[None, :] < lengths[:, None]
+        mask = mask.unsqueeze(-1).float()
+        out_avg = (out * mask).sum(dim=1) / lengths.unsqueeze(1)
+        out_avg = self.norm(out_avg)
 
-        out, _ = self.lstm(x, (h0, c0))  # out: [B, T, hidden_dim * num_directions]
+        return self.fc(out_avg)
 
-        attn_weights = self.attn(out)              # [B, T, 1]
-        attn_weights = torch.softmax(attn_weights, dim=1)  # softmax over time
-        context = torch.sum(attn_weights * out, dim=1)     # [B, H]
-
-        out = self.output(context)  # [B, output_dim]
-
-        return out
-
-class HybridOutputMLP(nn.Module):
-    def __init__(self, input_dim, cls_dims, reg_count, hidden_dim=64):
+class Hybrid(nn.Module):
+    def __init__(self, input_dim, cls_dims, reg_count, n_heads=4):
+        from config import HIDDEN_DIM, DROPOUT
         super().__init__()
+
+        self.input_dim = input_dim
+        self.hidden_dim = HIDDEN_DIM
+
+        self.input_proj = nn.Linear(input_dim, HIDDEN_DIM)
+
+        self.attn = nn.MultiheadAttention(embed_dim=HIDDEN_DIM, num_heads=n_heads, batch_first=True)
+        self.attn_norm = nn.LayerNorm(HIDDEN_DIM)
+
         self.shared = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.LeakyReLU(negative_slope=0.01),
-            nn.Dropout(0.3),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.LeakyReLU(negative_slope=0.01),
-            nn.Dropout(0.3)
+            ResidualBlock(HIDDEN_DIM, DROPOUT),
+            ResidualBlock(HIDDEN_DIM, DROPOUT),
+            ResidualBlock(HIDDEN_DIM, DROPOUT)
         )
-        self.cls_heads = nn.ModuleList([nn.Linear(hidden_dim, n) for n in cls_dims])
-        self.reg_heads = nn.ModuleList([nn.Linear(hidden_dim, 1) for _ in range(reg_count)])
+
+        self.cls_heads = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(HIDDEN_DIM, HIDDEN_DIM),
+                nn.ReLU(),
+                nn.Dropout(DROPOUT),
+                nn.Linear(HIDDEN_DIM, HIDDEN_DIM // 2),
+                nn.ReLU(),
+                nn.Dropout(DROPOUT),
+                nn.Linear(HIDDEN_DIM // 2, out_dim)
+            ) for out_dim in cls_dims
+        ])
+
+        # Regression heads
+        self.reg_heads = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(HIDDEN_DIM, HIDDEN_DIM),
+                nn.ReLU(),
+                nn.Dropout(DROPOUT),
+                nn.Linear(HIDDEN_DIM, HIDDEN_DIM // 2),
+                nn.ReLU(),
+                nn.Dropout(DROPOUT),
+                nn.Linear(HIDDEN_DIM // 2, 1)
+            ) for _ in range(reg_count)
+        ])
 
     def forward(self, x):
-        x = self.shared(x)
-        cls_outputs = [head(x) for head in self.cls_heads]
-        reg_outputs = [head(x) for head in self.reg_heads]
+        x_proj = self.input_proj(x)
+        x_seq = x_proj.unsqueeze(1)
+
+        attn_out, _ = self.attn(x_seq, x_seq, x_seq)
+        x_attn = self.attn_norm(attn_out + x_seq)
+
+        x_flat = x_attn.squeeze(1)
+
+        x_shared = self.shared(x_flat)
+
+        cls_outputs = [head(x_shared) for head in self.cls_heads]
+        reg_outputs = [head(x_shared) for head in self.reg_heads]
+
         return cls_outputs, reg_outputs
 
-
-class XGBoostClassifierWrapper:
-    def __init__(self, input_dim, output_dim, seed=42):
-        base_model = XGBClassifier(
-            n_estimators=300,
-            max_depth=5,
-            learning_rate=0.1,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            use_label_encoder=False,
-            eval_metric="logloss",
-            random_state=seed,
-            n_jobs=-1,
-            verbosity=0,
-            tree_method="gpu_hist",
-            predictor="gpu_predictor"
-        )
-        self.model = MultiOutputClassifier(base_model)
-        self.fitted = False
-
-    def fit(self, X_train, Y_train):
-        if isinstance(X_train, torch.Tensor):
-            X_train = X_train.cpu().numpy()
-        if isinstance(Y_train, torch.Tensor):
-            Y_train = Y_train.cpu().numpy()
-        self.model.fit(X_train, Y_train)
-        self.fitted = True
-
-    def predict(self, X):
-        if isinstance(X, torch.Tensor):
-            X = X.cpu().numpy()
-        return self.model.predict(X)
-
-    def evaluate(self, X_val, Y_val):
-        Y_pred = self.predict(X_val)
-        if isinstance(Y_val, torch.Tensor):
-            Y_val = Y_val.cpu().numpy()
-        acc = accuracy_score(Y_val, Y_pred)
-        report = classification_report(Y_val, Y_pred, output_dict=True)
-        return {"accuracy": acc, "report": report}
-
-
-
-def get_model(model_name, input_dim, output_dim):
-    print(f"\nUsing model: {model_name}")
+def getModel(model_name, input_dim, output_dim):
     if model_name == "BaseModel":
         return BaseModel(input_dim, output_dim)
     elif model_name == "Net":
         return Net(input_dim, output_dim)
     elif model_name == "LSTM":
         return LSTM(input_dim, output_dim)
-    elif model_name == "XGBClass":
-        return XGBoostClassifierWrapper(input_dim, output_dim)
-    elif model_name == "MLP":
-        return HybridOutputMLP(input_dim, output_dim)
+    elif model_name == "Hybrid":
+        return Hybrid(input_dim, output_dim)
     else:
         raise ValueError(f"Unknown model: {model_name}")
