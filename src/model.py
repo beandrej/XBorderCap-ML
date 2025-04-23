@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+import torch.nn.functional as F
 
 class ResidualBlock(nn.Module):
     def __init__(self, dim, dropout=0.1):
@@ -143,6 +144,75 @@ class Hybrid(nn.Module):
 
         return cls_outputs, reg_outputs
 
+# TODO build V2
+
+class V2(nn.Module):
+    def __init__(self, input_dim, hidden, n_classes):
+        super().__init__()
+        self.input_proj = nn.Linear(input_dim, hidden)
+
+        # Temporal Convolution Stack (Dilated 1D CNN)
+        self.temporal_blocks = nn.ModuleList()
+        for dilation in [1, 2, 4, 7, 24]:
+            self.temporal_blocks.append(
+                nn.Sequential(
+                    nn.Conv1d(hidden, hidden, kernel_size=3, padding=dilation, dilation=dilation),
+                    nn.BatchNorm1d(hidden),
+                    nn.ReLU(),
+                    nn.Conv1d(hidden, hidden, kernel_size=3, padding=dilation, dilation=dilation),
+                    nn.BatchNorm1d(hidden),
+                    nn.ReLU()
+                )
+            )
+
+        # Residual fusion
+        self.fusion_proj = nn.Linear(hidden * len(self.temporal_blocks), 128)
+
+        # Transformer encoder block (optional)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=128, nhead=4, dim_feedforward=256, dropout=0.2, batch_first=True)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=1)
+
+        # Latent mixing
+        self.latent_mixer = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU()
+        )
+
+        # Output heads
+        self.cls_head = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, n_classes)
+        )
+        self.reg_head = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1)
+        )
+
+    def forward(self, x):  # x: (B, T, D)
+        B, T, D = x.size()
+        x = self.input_proj(x)  # (B, T, hidden)
+        x = x.transpose(1, 2)  # (B, hidden, T)
+
+        features = []
+        for block in self.temporal_blocks:
+            out = block(x)
+            out = F.adaptive_avg_pool1d(out, 1).squeeze(-1)
+            features.append(out)
+
+        h = torch.cat(features, dim=-1)  # (B, hidden * #blocks)
+        h = self.fusion_proj(h).unsqueeze(1)  # (B, 1, 128)
+
+        # Transformer for temporal attention
+        h = self.transformer(h)  # (B, 1, 128)
+        h = h.squeeze(1)  # (B, 128)
+
+        h = self.latent_mixer(h)
+
+        return self.cls_head(h), self.reg_head(h)
+
+
 def getModel(model_name, input_dim, output_dim):
     if model_name == "BaseModel":
         return BaseModel(input_dim, output_dim)
@@ -152,5 +222,7 @@ def getModel(model_name, input_dim, output_dim):
         return LSTM(input_dim, output_dim)
     elif model_name == "Hybrid":
         return Hybrid(input_dim, output_dim)
+    elif model_name == "V2":
+        return V2(input_dim, n_classes=output_dim)
     else:
         raise ValueError(f"Unknown model: {model_name}")

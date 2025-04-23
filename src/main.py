@@ -39,5 +39,8 @@ if config.DO_PREDICT:
                 print(f"\nPredicting with Model: {model_name} on {dataset}\n")
                 predict_main(dataset, model_name)
 
-if config.DO_PLOT:
-    pass
+# if config.DO_PLOT:
+#     for model_name in config.MODELS:
+#         for dataset in config.DATASETS:
+#             from utils.plot_utils import *
+

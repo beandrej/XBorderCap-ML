@@ -14,11 +14,11 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SEED = 42
 
-DATASETS = ["FX_NTC_NORM", "BL_NTC_NORM", "BL_FBMC_NORM", "FX_FBMC_NORM"]   
-MODELS = ["Hybrid", "LSTM", "Net", "BaseModel"] 
+DATASETS = ["FX_NTC_NORM"]   
+MODELS = ["V2"] 
 
-DO_TRAIN = False
-DO_PREDICT = True
+DO_TRAIN = True
+DO_PREDICT = False
 DO_PLOT = False
 
 """

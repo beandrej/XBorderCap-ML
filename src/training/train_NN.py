@@ -55,7 +55,7 @@ def main(dataset, model_name, border):
         print("\nPCA DISABLED")
 
     if model_name == 'LSTM':
-        print(f"LSTM Model with SEQ_LEN = {config.SEQ_LEN}")
+        print(f"SEQ_LEN = {config.SEQ_LEN}")
 
     print(f"\nStarting Hybrid Training on {border} — [{dataset}] | Model: {model_name}")
     print(f"Train/Val Split: {config.TRAIN_SPLIT:.0%}/{config.VALID_SPLIT:.0%}")
@@ -80,7 +80,10 @@ def main(dataset, model_name, border):
                 X_batch = X_batch.to(config.DEVICE)
                 y_batch = y_batch.to(config.DEVICE)
                 lengths = lengths.to(config.DEVICE)
-                predictions = model(X_batch, lengths)
+
+                y_pred = model(X_batch, lengths)
+
+
             else:
                 X_batch, y_batch = batch
                 X_batch = X_batch.to(config.DEVICE)
@@ -128,6 +131,7 @@ def main(dataset, model_name, border):
                     y_batch = y_batch.to(config.DEVICE)
                     lengths = lengths.to(config.DEVICE)
                     y_pred = model(X_batch, lengths)
+
                 else:
                     X_batch, y_batch = batch
                     X_batch = X_batch.to(config.DEVICE)

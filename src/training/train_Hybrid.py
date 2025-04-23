@@ -20,6 +20,7 @@ from utils.train_utils import (
 )
 
 
+# TODO decode cls before computing MAE
 
 
 def main(dataset, model_name, border):

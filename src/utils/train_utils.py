@@ -66,7 +66,7 @@ def preparePaths(training_set, model_name, border):
     border_type = training_set.split('_')[1]
     base_path = config.PROJECT_ROOT
 
-    if model_name == 'LSTM':
+    if model_name == 'V2':
         model_base = os.path.join(base_path, f'model_params/{border_type}/{model_name}/SEQ_LEN={config.SEQ_LEN}')
         metrics_base = os.path.join(base_path, f'src/results/model_metrics/{border_type}/{model_name}/SEQ_LEN={config.SEQ_LEN}')
 
@@ -131,7 +131,7 @@ def buildTrainValTestSet(dataset, border):
 
         if config.PLOT_LAG_CORR:
             plotLagCorr(pd.concat([X, Y], axis=1), target_col=border)
-
+    
     X_train, Y_train, X_val, Y_val, X_test, Y_test = trainValTestSplit(X, Y, config.TRAIN_SPLIT, config.VALID_SPLIT)
 
     return X_train, Y_train, X_val, Y_val, X_test, Y_test
@@ -147,9 +147,15 @@ def splitXY(df: pd.DataFrame, border_type: str):
     return df.iloc[:, :first_target_idx], df.iloc[:, first_target_idx:]
 
 def loadDataset(dataset_name: str) -> pd.DataFrame:
-    path = os.path.join(config.PROJECT_ROOT, 'prep_data', f"{dataset_name}.csv")
-    df = pd.read_csv(path, index_col=0)
-    return df
+    data_dir = os.path.join(config.PROJECT_ROOT, 'prep_data/parquet')
+    base_path = os.path.join(data_dir, dataset_name)
+
+    if os.path.exists(f"{base_path}.parquet"):
+        return pd.read_parquet(f"{base_path}.parquet")
+
+    elif os.path.exists(f"{base_path}.csv"):
+        df = pd.read_csv(f"{base_path}.csv", index_col=0)
+        return df.to_parquet(f"{base_path}.parquet")
 
 def filterByBorder(X, border, X_time, country_neighbors):
 
@@ -208,8 +214,8 @@ def trainValTestSplit(X, Y, train_frac, val_frac):
     return X_train, Y_train, X_val, Y_val, X_test, Y_test
 
 def prepareModel(model_name, X_train, Y_train, X_val, Y_val):
-    if model_name == "LSTM":
-        train_dataset = SequenceDataset(X_train, Y_train, seq_len=config.SEQ_LEN, min_seq_len=24)
+    if model_name == "V2":
+        train_dataset = SequenceDataset(X_train, Y_train, seq_len=config.SEQ_LEN, min_seq_len=None)
         val_dataset = SequenceDataset(X_val, Y_val, seq_len=config.SEQ_LEN, min_seq_len=config.SEQ_LEN)
         collate_fn = padCollate
     else:
@@ -222,7 +228,7 @@ def prepareModel(model_name, X_train, Y_train, X_val, Y_val):
     train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
     val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
 
-    if model_name == "LSTM":
+    if model_name == "V2":
         sample_X, sample_Y, _ = train_dataset[0]
         input_dim = sample_X.shape[1]
     else:
@@ -431,7 +437,7 @@ def prepareTestPaths(training_set, model_name, border):
     base_path = config.PROJECT_ROOT
     border_type = training_set.split('_')[1]
 
-    if model_name == 'LSTM':
+    if model_name == 'V2':
         model_path = os.path.join(base_path, f'model_params/{border_type}/{model_name}/SEQ_LEN={config.SEQ_LEN}', f"{model_name}_{training_set}_{border}.pth")
         pred_path = os.path.join(base_path, f'src/results/predictions_csv/{model_name}/SEQ_LEN={config.SEQ_LEN}', f"pred_{model_name}_{training_set}.csv")
         metrics_path = os.path.join(base_path, f'src/results/test_metrics/{model_name}/SEQ_LEN={config.SEQ_LEN}', f"test_metrics_{model_name}_{training_set}.csv")
@@ -469,7 +475,7 @@ def preprocessTestData(X_test):
     return X_scaled
 
 def prepareTestLoader(X_test, model_name):
-    if model_name == "LSTM":
+    if model_name == "V2":
         dummy_Y = np.zeros(len(X_test))
         dataset = SequenceDataset(X_test, dummy_Y, seq_len=config.SEQ_LEN, min_seq_len=config.SEQ_LEN)
         collate_fn = padCollate
