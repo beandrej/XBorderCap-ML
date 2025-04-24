@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 *.pyd
 *.csv
+*.txt
 
 01_data/
 lit/
