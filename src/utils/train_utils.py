@@ -58,6 +58,20 @@ class HybridDataset(Dataset):
         reg_targets = [y[idx] for y in self.Y_reg_list]
         return self.X[idx], cls_targets, reg_targets
     
+class TCNDataset(Dataset):
+    def __init__(self, X, Y, seq_len):
+        self.X = torch.tensor(X, dtype=torch.float32)
+        self.Y = torch.tensor(Y, dtype=torch.float32 if Y.ndim == 2 else torch.long)
+        self.seq_len = seq_len
+
+    def __len__(self):
+        return len(self.X) - self.seq_len + 1
+
+    def __getitem__(self, idx):
+        x_seq = self.X[idx : idx + self.seq_len]  
+        y = self.Y[idx + self.seq_len - 1]       
+        return x_seq, y
+
 """************************************************************************
             Training and preprocessing functions
 ************************************************************************"""
@@ -66,9 +80,9 @@ def preparePaths(training_set, model_name, border):
     border_type = training_set.split('_')[1]
     base_path = config.PROJECT_ROOT
 
-    if model_name == 'V2':
-        model_base = os.path.join(base_path, f'model_params/{border_type}/{model_name}/SEQ_LEN={config.SEQ_LEN}')
-        metrics_base = os.path.join(base_path, f'src/results/model_metrics/{border_type}/{model_name}/SEQ_LEN={config.SEQ_LEN}')
+    if model_name == 'TCN':
+        model_base = os.path.join(base_path, f'model_params/{border_type}/{model_name}')
+        metrics_base = os.path.join(base_path, f'src/results/model_metrics/{border_type}/{model_name}')
 
         model_path = os.path.join(model_base, f"{model_name}_{training_set}_{border}.pth")
         metrics_path = os.path.join(metrics_base, f"metrics_{model_name}_{training_set}_{border}.csv")
@@ -76,15 +90,12 @@ def preparePaths(training_set, model_name, border):
     elif model_name == 'Hybrid':
         model_base = os.path.join(base_path, f'model_params/{border_type}/{model_name}')
         model_config_base = os.path.join(base_path, f'model_params/{border_type}/{model_name}/model_config')
-        classmapping_base = os.path.join(base_path, f'model_params/{border_type}/{model_name}/mappings')  
         metrics_base = os.path.join(base_path, f'src/results/model_metrics/{border_type}/{model_name}')  
 
         model_path = os.path.join(model_base, f'{model_name}_{training_set}_{border}_{config.UNIQUE_VAL_TRSH}.pth')
         model_config_path = os.path.join(model_config_base, f'params_{model_name}_{training_set}_{border}_{config.UNIQUE_VAL_TRSH}.json')
-        classmapping_path = os.path.join(classmapping_base, f'cls_map_{model_name}_{training_set}_{border}_{config.UNIQUE_VAL_TRSH}.json')
         metrics_path = os.path.join(metrics_base, f"metrics_{model_name}_{training_set}_{border}_{config.UNIQUE_VAL_TRSH}.csv")
         os.makedirs(model_config_base, exist_ok=True)
-        os.makedirs(classmapping_base, exist_ok=True)
 
     else:
         model_base = os.path.join(base_path, f'model_params/{border_type}/{model_name}')
@@ -97,7 +108,7 @@ def preparePaths(training_set, model_name, border):
     os.makedirs(metrics_base, exist_ok=True)
 
     if model_name == 'Hybrid':
-        return model_path, model_config_path, classmapping_path, metrics_path
+        return model_path, metrics_path
     else:
         return model_path, metrics_path
 
@@ -113,7 +124,7 @@ def buildTrainValTestSet(dataset, border):
 
     X_wo_time = addRollingFeatures(X_wo_time, config.ROLLING_HOURS)
 
-    if not config.PREDICT_ALL_BORDERS and border is not None:
+    if border is not None:
         Y = Y[[border]]
         neighbors = extractCountryNeighbors([
                 "AUS_CZE", "CZE_AUS", "AUS_GER", "GER_AUS", "BEL_FRA", "FRA_BEL",
@@ -225,8 +236,8 @@ def prepareModel(model_name, X_train, Y_train, X_val, Y_val):
                                     torch.tensor(Y_val, dtype=torch.float32))
         collate_fn = None
 
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
+    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, num_workers=4, collate_fn=collate_fn, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=4, collate_fn=collate_fn, pin_memory=True)
 
     if model_name == "V2":
         sample_X, sample_Y, _ = train_dataset[0]
@@ -270,28 +281,40 @@ def prepareDataHybrid(dataset, border):
     X_train, X_val, X_test, pca = preprocessFeatures(X_train, X_val, X_test)
 
     if config.DO_PREDICT and not config.DO_TRAIN:
+        if border in config.CLS_COLS:
+            # Load class mapping
+            classmap_path = os.path.join(config.PROJECT_ROOT, "mappings", f"clsMap.json")
+            with open(classmap_path, 'r') as f:
+                class_mapping = json.load(f)
+
+            mapping = class_mapping[border]
+            encoded_test = Y_test[border].astype(str).map(mapping).astype(int)
+            Y_test = pd.DataFrame({border: encoded_test})
         return X_test, Y_test
     
-    _, _, classmap_path, _ = preparePaths(dataset, 'Hybrid', border)
-    target_types = getTargetTypes(Y_train, config.UNIQUE_VAL_TRSH)
-    cls_cols = [border] if target_types[border] == 'classification' else []
-    reg_cols = [] if cls_cols else [border]
+    cls_cols = [border] if border in config.CLS_COLS else []
+    reg_cols = [border] if border in config.REG_COLS else []
 
     label_encoders = {}
     Y_cls_train, Y_cls_val = pd.DataFrame(), pd.DataFrame()
-    full_Y = pd.concat([Y_train, Y_val], axis=0)
+    Y_reg_train, Y_reg_val = pd.DataFrame(), pd.DataFrame()
 
-    for col in cls_cols:
-        full_col = full_Y[col]
-        saveClassMappings(Y_train, [col], classmap_path)
-        train_encoded, val_encoded, le = safeLabelEncode(Y_train[col], Y_val[col], fit_on=None)
+    if cls_cols:
+        classmap_path = os.path.join(config.PROJECT_ROOT, "mappings", f"clsMap.json")
+        with open(classmap_path, 'r') as f:
+            class_mapping = json.load(f)
+
+        col = border
+        mapping = class_mapping[col]
+
+        train_encoded = Y_train[col].astype(str).map(mapping).astype(int)
+        val_encoded = Y_val[col].astype(str).map(mapping).astype(int)
+
         Y_cls_train[col] = train_encoded
         Y_cls_val[col] = val_encoded
-        label_encoders[col] = le
 
-    
+        label_encoders[col] = {v: k for k, v in mapping.items()}
 
-    Y_reg_train, Y_reg_val = pd.DataFrame(), pd.DataFrame()
     if reg_cols:
         Y_reg_train = Y_train[reg_cols].copy()
         Y_reg_val = Y_val[reg_cols].copy()
@@ -302,20 +325,44 @@ def prepareDataHybrid(dataset, border):
         label_encoders, cls_cols, reg_cols, pca
     )
 
+def createTCNDataloaders(X_train, Y_cls_train, Y_reg_train, 
+                         X_val, Y_cls_val, Y_reg_val, batch_size, seq_len):
+
+    if not Y_cls_train.empty:
+        col = Y_cls_train.columns[0]
+        Y_train = Y_cls_train[col].values
+        Y_val = Y_cls_val[col].values
+    else:
+        col = Y_reg_train.columns[0]
+        Y_train = Y_reg_train[col].values
+        Y_val = Y_reg_val[col].values
+
+    train_dataset = TCNDataset(X_train, Y_train, seq_len)
+    val_dataset = TCNDataset(X_val, Y_val, seq_len)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False, num_workers=config.NUM_WORKERS, pin_memory=True, persistent_workers=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=config.NUM_WORKERS, pin_memory=True, persistent_workers=True, drop_last=True)
+
+    input_dim = X_train.shape[1]
+    return train_loader, val_loader, input_dim
+
 def createDataloadersHybrid(X_train, Y_cls_train, Y_reg_train, 
                              X_val, Y_cls_val, Y_reg_val, batch_size):
 
     X_tensor_train = torch.tensor(X_train, dtype=torch.float32)
     X_tensor_val = torch.tensor(X_val, dtype=torch.float32)
 
-    Y_cls_tensors_train = [torch.tensor(Y_cls_train[col].values, dtype=torch.long) for col in Y_cls_train.columns]
-    Y_cls_tensors_val = [torch.tensor(Y_cls_val[col].values, dtype=torch.long) for col in Y_cls_val.columns]
+    if not Y_cls_train.empty:
+        col = Y_cls_train.columns[0]
+        Y_tensor_train = torch.tensor(Y_cls_train[col].values, dtype=torch.long)
+        Y_tensor_val = torch.tensor(Y_cls_val[col].values, dtype=torch.long)
+    else:
+        col = Y_reg_train.columns[0]
+        Y_tensor_train = torch.tensor(Y_reg_train[col].values, dtype=torch.float32).view(-1, 1)
+        Y_tensor_val = torch.tensor(Y_reg_val[col].values, dtype=torch.float32).view(-1, 1)
 
-    Y_reg_tensors_train = [torch.tensor(Y_reg_train[col].values, dtype=torch.float32).view(-1, 1) for col in Y_reg_train.columns]
-    Y_reg_tensors_val = [torch.tensor(Y_reg_val[col].values, dtype=torch.float32).view(-1, 1) for col in Y_reg_val.columns]
-
-    train_dataset = HybridDataset(X_tensor_train, Y_cls_tensors_train, Y_reg_tensors_train)
-    val_dataset = HybridDataset(X_tensor_val, Y_cls_tensors_val, Y_reg_tensors_val)
+    train_dataset = TensorDataset(X_tensor_train, Y_tensor_train)
+    val_dataset = TensorDataset(X_tensor_val, Y_tensor_val)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
