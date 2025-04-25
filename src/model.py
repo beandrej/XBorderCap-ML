@@ -4,20 +4,50 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch.nn.functional as F
 
 class ResidualBlock(nn.Module):
-    def __init__(self, dim, dropout=0.1):
+    def __init__(self):
+        from config import SHARED_HIDDEN, DROPOUT, LEAKY_RELU
         super().__init__()
         self.block = nn.Sequential(
-            nn.Linear(dim, dim),
-            nn.BatchNorm1d(dim),
-            nn.LeakyReLU(0.03),
-            nn.Dropout(dropout),
-            nn.Linear(dim, dim),
-            nn.BatchNorm1d(dim),
+            nn.Linear(SHARED_HIDDEN, SHARED_HIDDEN),
+            nn.BatchNorm1d(SHARED_HIDDEN),
+            nn.LeakyReLU(LEAKY_RELU),
+            nn.Dropout(DROPOUT),
+            nn.Linear(SHARED_HIDDEN, SHARED_HIDDEN),
+            nn.BatchNorm1d(SHARED_HIDDEN),
         )
-        self.activation = nn.LeakyReLU(0.03)
+        self.activation = nn.LeakyReLU(LEAKY_RELU)
 
     def forward(self, x):
         return self.activation(self.block(x) + x)
+
+class ResidualTCNBlock(nn.Module):
+    def __init__(self, dilation):
+        from config import SHARED_HIDDEN, DROPOUT, LEAKY_RELU, KERNEL_SIZE, STRIDE
+        super().__init__()
+        padding = (KERNEL_SIZE - 1) * dilation
+        self.conv = nn.Conv1d(SHARED_HIDDEN, SHARED_HIDDEN, KERNEL_SIZE, padding=padding, dilation=dilation)
+        self.bn = nn.BatchNorm1d(SHARED_HIDDEN)
+        self.relu = nn.LeakyReLU(LEAKY_RELU)
+        self.dropout = nn.Dropout(DROPOUT)
+
+    def forward(self, x):
+        out = self.conv(x)
+        out = out[:, :, :-self.conv.padding[0]]
+        out = self.bn(out)
+        out = self.relu(out)
+        return self.dropout(out + x)
+
+class ResidualTCN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        from config import DILATION
+        layers = []
+        for dilation in DILATION:
+            layers += [ResidualTCNBlock(dilation)]
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.network(x)
 
 class BaseModel(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -85,132 +115,101 @@ class LSTM(nn.Module):
         return self.fc(out_avg)
 
 class Hybrid(nn.Module):
-    def __init__(self, input_dim, cls_dims, reg_count, n_heads=4):
-        from config import HIDDEN_DIM, DROPOUT
+    def __init__(self, input_dim, out_dim, task_type='classification', n_heads=4):
+        from config import SHARED_HIDDEN, CLS_HIDDEN, REG_HIDDEN, DROPOUT
         super().__init__()
 
+        self.task_type = task_type
         self.input_dim = input_dim
-        self.hidden_dim = HIDDEN_DIM
+        self.hidden_dim = SHARED_HIDDEN
 
-        self.input_proj = nn.Linear(input_dim, HIDDEN_DIM)
+        self.input_proj = nn.Linear(input_dim, SHARED_HIDDEN)
 
-        self.attn = nn.MultiheadAttention(embed_dim=HIDDEN_DIM, num_heads=n_heads, batch_first=True)
-        self.attn_norm = nn.LayerNorm(HIDDEN_DIM)
+        self.attn = nn.MultiheadAttention(embed_dim=SHARED_HIDDEN, num_heads=n_heads, batch_first=True)
+        self.attn_norm = nn.LayerNorm(SHARED_HIDDEN)
 
         self.shared = nn.Sequential(
-            ResidualBlock(HIDDEN_DIM, DROPOUT),
-            ResidualBlock(HIDDEN_DIM, DROPOUT),
-            ResidualBlock(HIDDEN_DIM, DROPOUT)
+            ResidualBlock(),
+            ResidualBlock(),
+            ResidualBlock()
         )
 
-        self.cls_heads = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(HIDDEN_DIM, HIDDEN_DIM),
-                nn.ReLU(),
-                nn.Dropout(DROPOUT),
-                nn.Linear(HIDDEN_DIM, HIDDEN_DIM // 2),
-                nn.ReLU(),
-                nn.Dropout(DROPOUT),
-                nn.Linear(HIDDEN_DIM // 2, out_dim)
-            ) for out_dim in cls_dims
-        ])
+        # Single regression head
+        self.reg_head = nn.Sequential(
+            nn.Linear(SHARED_HIDDEN, REG_HIDDEN),
+            nn.ReLU(),
+            nn.Dropout(DROPOUT),
+            nn.Linear(REG_HIDDEN, REG_HIDDEN // 2),
+            nn.ReLU(),
+            nn.Dropout(DROPOUT),
+            nn.Linear(REG_HIDDEN // 2, 1)
+        )
 
-        # Regression heads
-        self.reg_heads = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(HIDDEN_DIM, HIDDEN_DIM),
-                nn.ReLU(),
-                nn.Dropout(DROPOUT),
-                nn.Linear(HIDDEN_DIM, HIDDEN_DIM // 2),
-                nn.ReLU(),
-                nn.Dropout(DROPOUT),
-                nn.Linear(HIDDEN_DIM // 2, 1)
-            ) for _ in range(reg_count)
-        ])
+        # Single classification head
+        self.cls_head = nn.Sequential(
+            nn.Linear(SHARED_HIDDEN, CLS_HIDDEN),
+            nn.ReLU(),
+            nn.Dropout(DROPOUT),
+            nn.Linear(CLS_HIDDEN, CLS_HIDDEN // 2),
+            nn.ReLU(),
+            nn.Dropout(DROPOUT),
+            nn.Linear(CLS_HIDDEN // 2, out_dim)
+        )
 
-    def forward(self, x):
-        x_proj = self.input_proj(x)
-        x_seq = x_proj.unsqueeze(1)
+    def forward(self, x):  # x: [batch, input_dim]
+        x_proj = self.input_proj(x)          # [batch, hidden_dim]
+        x_seq = x_proj.unsqueeze(1)          # [batch, 1, hidden_dim]
 
         attn_out, _ = self.attn(x_seq, x_seq, x_seq)
         x_attn = self.attn_norm(attn_out + x_seq)
-
-        x_flat = x_attn.squeeze(1)
+        x_flat = x_attn.squeeze(1)           # [batch, hidden_dim]
 
         x_shared = self.shared(x_flat)
 
-        cls_outputs = [head(x_shared) for head in self.cls_heads]
-        reg_outputs = [head(x_shared) for head in self.reg_heads]
+        if self.task_type == 'classification':
+            return self.cls_head(x_shared)
+        else:
+            return self.reg_head(x_shared)
 
-        return cls_outputs, reg_outputs
-
-# TODO build V2
-
-class V2(nn.Module):
-    def __init__(self, input_dim, hidden, n_classes):
+class TCN(nn.Module):
+    def __init__(self, input_dim, out_dim, task_type):
         super().__init__()
-        self.input_proj = nn.Linear(input_dim, hidden)
+        from config import SHARED_HIDDEN, REG_HIDDEN, LEAKY_RELU, CLS_HIDDEN, DROPOUT
 
-        # Temporal Convolution Stack (Dilated 1D CNN)
-        self.temporal_blocks = nn.ModuleList()
-        for dilation in [1, 2, 4, 7, 24]:
-            self.temporal_blocks.append(
-                nn.Sequential(
-                    nn.Conv1d(hidden, hidden, kernel_size=3, padding=dilation, dilation=dilation),
-                    nn.BatchNorm1d(hidden),
-                    nn.ReLU(),
-                    nn.Conv1d(hidden, hidden, kernel_size=3, padding=dilation, dilation=dilation),
-                    nn.BatchNorm1d(hidden),
-                    nn.ReLU()
-                )
-            )
+        self.task_type = task_type
+        self.input_proj = nn.Linear(input_dim, SHARED_HIDDEN)
+        self.tcn = ResidualTCN()
 
-        # Residual fusion
-        self.fusion_proj = nn.Linear(hidden * len(self.temporal_blocks), 128)
-
-        # Transformer encoder block (optional)
-        encoder_layer = nn.TransformerEncoderLayer(d_model=128, nhead=4, dim_feedforward=256, dropout=0.2, batch_first=True)
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=1)
-
-        # Latent mixing
-        self.latent_mixer = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.ReLU()
-        )
-
-        # Output heads
-        self.cls_head = nn.Sequential(
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Linear(32, n_classes)
-        )
         self.reg_head = nn.Sequential(
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Linear(32, 1)
+            nn.Linear(SHARED_HIDDEN, REG_HIDDEN),
+            nn.LeakyReLU(LEAKY_RELU),
+            nn.Dropout(DROPOUT),
+            nn.Linear(REG_HIDDEN, REG_HIDDEN // 2),
+            nn.LeakyReLU(LEAKY_RELU),
+            nn.Dropout(DROPOUT),
+            nn.Linear(REG_HIDDEN // 2, out_dim)
         )
 
-    def forward(self, x):  # x: (B, T, D)
-        B, T, D = x.size()
-        x = self.input_proj(x)  # (B, T, hidden)
-        x = x.transpose(1, 2)  # (B, hidden, T)
+        self.cls_head = nn.Sequential(
+            nn.Linear(SHARED_HIDDEN, CLS_HIDDEN),
+            nn.LeakyReLU(LEAKY_RELU),
+            nn.Dropout(DROPOUT),
+            nn.Linear(CLS_HIDDEN, CLS_HIDDEN),
+            nn.LeakyReLU(LEAKY_RELU),
+            nn.Dropout(DROPOUT),
+            nn.Linear(CLS_HIDDEN, out_dim)
+        )
+    
+    def forward(self, x):      # x: [batch, seq_len, input_dim]
+        x = self.input_proj(x) # -> [batch, seq_len, HIDDEN]
+        x = x.transpose(1, 2)  # -> [batch, HIDDEN, seq_len]
+        x = self.tcn(x)        # -> [batch, HIDDEN, seq_len]
+        x = x[:, :, -1]        # take last time step
 
-        features = []
-        for block in self.temporal_blocks:
-            out = block(x)
-            out = F.adaptive_avg_pool1d(out, 1).squeeze(-1)
-            features.append(out)
-
-        h = torch.cat(features, dim=-1)  # (B, hidden * #blocks)
-        h = self.fusion_proj(h).unsqueeze(1)  # (B, 1, 128)
-
-        # Transformer for temporal attention
-        h = self.transformer(h)  # (B, 1, 128)
-        h = h.squeeze(1)  # (B, 128)
-
-        h = self.latent_mixer(h)
-
-        return self.cls_head(h), self.reg_head(h)
+        if self.task_type == 'classification':
+            return self.cls_head(x)
+        else:
+            return self.reg_head(x)
 
 
 def getModel(model_name, input_dim, output_dim):
@@ -222,7 +221,7 @@ def getModel(model_name, input_dim, output_dim):
         return LSTM(input_dim, output_dim)
     elif model_name == "Hybrid":
         return Hybrid(input_dim, output_dim)
-    elif model_name == "V2":
-        return V2(input_dim, n_classes=output_dim)
+    elif model_name == "TCN":
+        return TCN(input_dim, n_classes=output_dim)
     else:
         raise ValueError(f"Unknown model: {model_name}")
