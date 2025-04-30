@@ -33,7 +33,7 @@ OPTIMIZER = torch.optim.AdamW
 EPOCHS = 50                     
 TRAIN_SPLIT = 0.95              # [%] Portion of FULL SET used for training, rest is test
 VALID_SPLIT = 0.20              # [%] Portion of TRAINING SET used for validation
-BATCH_SIZE = 64
+BATCH_SIZE = 512
 WEIGHT_DECAY = 1e-4
 LEARNING_RATE = 3e-4
 DROPOUT = 0.4
@@ -74,8 +74,9 @@ PLOT_BORDER_SPLIT = False
 PREDICT_ON_FULL_DATA = False
 
 FBMC_BORDERS = [
-    "AUS_CZE", "CZE_AUS", "AUS_GER", "GER_AUS", "BEL_FRA", "FRA_BEL", "BEL_GER", "GER_BEL", "BEL_NET", "NET_BEL",
-    "CZE_GER", "CZE_POL", "POL_CZE", "GER_NET", "NET_GER", "GER_POL", "POL_GER", "GER_FRA", "FRA_GER"
+    "AUS_CZE", "CZE_AUS", "AUS_GER", "GER_AUS", "BEL_FRA", "FRA_BEL", "BEL_GER", "GER_BEL", 
+    "BEL_NET", "NET_BEL", "CZE_GER", "CZE_POL", "POL_CZE", "GER_NET", "NET_GER", "GER_POL", 
+    "POL_GER", "GER_FRA", "FRA_GER"
 ]
 
 NTC_BORDERS = [
@@ -93,8 +94,17 @@ REG_COLS = [
 ]
 
 CLS_COLS = [
-    'GBR_BEL', 'BEL_GBR', 'ITA_SVN', 'NET_DK1', 'ITA_FRA', 'ITA_SWI', 'GER_SWI', 
-    'ITA_AUS', 'FRA_SWI', 'SWI_GER', 'AUS_SWI', 'GBR_NET', 'NET_GBR', 'SWI_FRA',
-    'GBR_FRA', 'SWI_AUS', 'FRA_GBR', 'NO2_NET', 'GER_DK2', 'DK1_NET', 'NET_NO2',
-    'DK2_GER'
+    'GBR_BEL', 'BEL_GBR', 'ITA_SVN', 'NET_DK1', 'ITA_FRA', 'ITA_SWI', 'GER_SWI', 'ITA_AUS', 
+    'FRA_SWI', 'SWI_GER', 'AUS_SWI', 'GBR_NET', 'NET_GBR', 'SWI_FRA', 'GBR_FRA', 'SWI_AUS', 
+    'FRA_GBR', 'NO2_NET', 'GER_DK2', 'DK1_NET', 'NET_NO2', 'DK2_GER'
+]
+
+ALL_BORDERS = [
+    'SWI_ITA', 'FRA_ITA', 'SVN_ITA', 'POR_ESP', 'AUS_ITA', 'ESP_POR', 'ESP_FRA', 'GER_DK1', 
+    'DK1_GER', 'FRA_ESP', 'AUS_CZE', 'CZE_AUS', 'AUS_GER', 'GER_AUS', 'BEL_FRA', 'FRA_BEL', 
+    'BEL_GER', 'GER_BEL', 'BEL_NET', 'NET_BEL', 'CZE_GER', 'CZE_POL', 'POL_CZE', 'GER_NET', 
+    'NET_GER', 'GER_POL', 'POL_GER', 'GER_FRA', 'FRA_GER', 'GBR_BEL', 'BEL_GBR', 'ITA_SVN', 
+    'NET_DK1', 'ITA_FRA', 'ITA_SWI', 'GER_SWI', 'ITA_AUS', 'FRA_SWI', 'SWI_GER', 'AUS_SWI', 
+    'GBR_NET', 'NET_GBR', 'SWI_FRA', 'GBR_FRA', 'SWI_AUS', 'FRA_GBR', 'NO2_NET', 'GER_DK2', 
+    'DK1_NET', 'NET_NO2', 'DK2_GER'
 ]
