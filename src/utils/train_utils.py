@@ -122,27 +122,11 @@ def buildTrainValTestSet(dataset, border):
     X_time = X[time_cols]
     X_wo_time = X.drop(columns=time_cols)
 
-    X_wo_time = addRollingFeatures(X_wo_time, config.ROLLING_HOURS)
+    Y = Y[[border]]
+    neighbors = extractCountryNeighbors(config.ALL_BORDERS)
+    X, related_countries = filterByBorder(X_wo_time, border, X_time, neighbors)
+    print(f"Using {len(X.columns)} input columns for countries: {related_countries}")
 
-    if border is not None:
-        Y = Y[[border]]
-        neighbors = extractCountryNeighbors([
-                "AUS_CZE", "CZE_AUS", "AUS_GER", "GER_AUS", "BEL_FRA", "FRA_BEL",
-                "BEL_GER", "GER_BEL", "BEL_NET", "NET_BEL", "CZE_GER", "GER_CZE",
-                "CZE_POL", "POL_CZE", "GER_NET", "NET_GER", "GER_POL", "POL_GER",
-                "GER_FRA", "FRA_GER", "AUS_ITA", "ITA_AUS", "AUS_SWI", "SWI_AUS",
-                "BEL_GBR", "GBR_BEL", "SVN_ITA", "ITA_SVN", "DK1_GER", "GER_DK1",
-                "DK1_NET", "NET_DK1", "DK2_GER", "GER_DK2", "ESP_FRA", "FRA_ESP",
-                "ESP_POR", "POR_ESP", "FRA_GBR", "GBR_FRA", "FRA_ITA", "ITA_FRA",
-                "FRA_SWI", "SWI_FRA", "GBR_NET", "NET_GBR", "GER_SWI", "SWI_GER",
-                "ITA_SWI", "SWI_ITA", "NET_NO2", "NO2_NET"
-            ])
-        X, related_countries = filterByBorder(X_wo_time, border, X_time, neighbors)
-        print(f"Using {len(X.columns)} input columns for countries: {related_countries}")
-
-        if config.PLOT_LAG_CORR:
-            plotLagCorr(pd.concat([X, Y], axis=1), target_col=border)
-    
     X_train, Y_train, X_val, Y_val, X_test, Y_test = trainValTestSplit(X, Y, config.TRAIN_SPLIT, config.VALID_SPLIT)
 
     return X_train, Y_train, X_val, Y_val, X_test, Y_test
@@ -158,7 +142,7 @@ def splitXY(df: pd.DataFrame, border_type: str):
     return df.iloc[:, :first_target_idx], df.iloc[:, first_target_idx:]
 
 def loadDataset(dataset_name: str) -> pd.DataFrame:
-    data_dir = os.path.join(config.PROJECT_ROOT, 'prep_data/parquet')
+    data_dir = os.path.join(config.PROJECT_ROOT, 'prep_data')
     base_path = os.path.join(data_dir, dataset_name)
 
     if os.path.exists(f"{base_path}.parquet"):
@@ -176,7 +160,7 @@ def filterByBorder(X, border, X_time, country_neighbors):
         related.update(country_neighbors.get(c, []))
 
     feature_mask = lambda col: any(cc in col for cc in related)
-    selected = [col for col in X.columns if feature_mask(col) or '_rollavg_' in col and feature_mask(col)]
+    selected = [col for col in X.columns if feature_mask(col)]
 
     X_filtered = X[selected]
     X_time = X_time.reindex(X_filtered.index)
@@ -185,19 +169,11 @@ def filterByBorder(X, border, X_time, country_neighbors):
 def extractCountryNeighbors(target_columns):
     country_neighbors = defaultdict(set)
     for pair in target_columns:
-        if "_" in pair:
-            c1, c2 = pair.split("_")
-            country_neighbors[c1].add(c2)
-            country_neighbors[c2].add(c1)
+        assert("_" in pair), "Error: Border must be in format XXX_YYY"
+        c1, c2 = pair.split("_")
+        country_neighbors[c1].add(c2)
+        country_neighbors[c2].add(c1)
     return {country: sorted(list(neighbors)) for country, neighbors in country_neighbors.items()}
-
-def addRollingFeatures(X: pd.DataFrame, windows: list) -> pd.DataFrame:
-    rolling_features_list = []
-    for window in windows:
-        rolling_avg = X.rolling(window=window, min_periods=1).mean()
-        rolling_avg.columns = [f"{col}_rollavg_{window}h" for col in rolling_avg.columns]
-        rolling_features_list.append(rolling_avg)
-    return pd.concat([X] + rolling_features_list, axis=1)
 
 def trainValTestSplit(X, Y, train_frac, val_frac):
     assert 0 < train_frac < 1
@@ -225,7 +201,7 @@ def trainValTestSplit(X, Y, train_frac, val_frac):
     return X_train, Y_train, X_val, Y_val, X_test, Y_test
 
 def prepareModel(model_name, X_train, Y_train, X_val, Y_val):
-    if model_name == "V2":
+    if model_name == "LSTM":
         train_dataset = SequenceDataset(X_train, Y_train, seq_len=config.SEQ_LEN, min_seq_len=None)
         val_dataset = SequenceDataset(X_val, Y_val, seq_len=config.SEQ_LEN, min_seq_len=config.SEQ_LEN)
         collate_fn = padCollate
@@ -239,7 +215,7 @@ def prepareModel(model_name, X_train, Y_train, X_val, Y_val):
     train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, num_workers=4, collate_fn=collate_fn, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=4, collate_fn=collate_fn, pin_memory=True)
 
-    if model_name == "V2":
+    if model_name == "LSTM":
         sample_X, sample_Y, _ = train_dataset[0]
         input_dim = sample_X.shape[1]
     else:
@@ -258,7 +234,7 @@ def prepareData(training_set, border):
         RFAnalysis(X_train, Y_train, training_set, border, original_feature_names=X_train.columns.tolist())
         return None
 
-    X_train, X_val, X_test, pca = preprocessFeatures(X_train, X_val, X_test)
+    X_train, X_val, X_test = scaleFeatures(X_train, X_val, X_test)
 
     if config.DO_PREDICT and not config.DO_TRAIN:
         return X_test, Y_test
@@ -269,7 +245,7 @@ def prepareData(training_set, border):
     Y_train = Y_train.to_numpy()
     Y_val = Y_val.to_numpy()
 
-    return X_train, Y_train, X_val, Y_val, pca
+    return X_train, Y_train, X_val, Y_val
 
 def prepareDataHybrid(dataset, border):
     X_train, Y_train, X_val, Y_val, X_test, Y_test = buildTrainValTestSet(dataset, border)
@@ -277,53 +253,38 @@ def prepareDataHybrid(dataset, border):
     if config.USE_RF:
         RFAnalysis(X_train, Y_train, dataset, border, original_feature_names=X_train.columns.tolist())
         return None
-    
-    X_train, X_val, X_test, pca = preprocessFeatures(X_train, X_val, X_test)
 
+    X_train, X_val, X_test = scaleFeatures(X_train, X_val, X_test)
+
+    # Inference-only mode
     if config.DO_PREDICT and not config.DO_TRAIN:
         if border in config.CLS_COLS:
-            # Load class mapping
-            classmap_path = os.path.join(config.PROJECT_ROOT, "mappings", f"clsMap.json")
+            classmap_path = os.path.join(config.PROJECT_ROOT, "mappings", "clsMap.json")
             with open(classmap_path, 'r') as f:
                 class_mapping = json.load(f)
-
             mapping = class_mapping[border]
             encoded_test = Y_test[border].astype(str).map(mapping).astype(int)
             Y_test = pd.DataFrame({border: encoded_test})
         return X_test, Y_test
-    
-    cls_cols = [border] if border in config.CLS_COLS else []
-    reg_cols = [border] if border in config.REG_COLS else []
 
-    label_encoders = {}
-    Y_cls_train, Y_cls_val = pd.DataFrame(), pd.DataFrame()
-    Y_reg_train, Y_reg_val = pd.DataFrame(), pd.DataFrame()
-
-    if cls_cols:
-        classmap_path = os.path.join(config.PROJECT_ROOT, "mappings", f"clsMap.json")
+    # Training mode
+    if border in config.CLS_COLS:
+        classmap_path = os.path.join(config.PROJECT_ROOT, "mappings", "clsMap.json")
         with open(classmap_path, 'r') as f:
             class_mapping = json.load(f)
+        mapping = class_mapping[border]
 
-        col = border
-        mapping = class_mapping[col]
+        Y_train = pd.DataFrame({border: Y_train[border].astype(str).map(mapping).astype(int)})
+        Y_val = pd.DataFrame({border: Y_val[border].astype(str).map(mapping).astype(int)})
 
-        train_encoded = Y_train[col].astype(str).map(mapping).astype(int)
-        val_encoded = Y_val[col].astype(str).map(mapping).astype(int)
+    elif border in config.REG_COLS:
+        Y_train = Y_train[[border]]
+        Y_val = Y_val[[border]]
 
-        Y_cls_train[col] = train_encoded
-        Y_cls_val[col] = val_encoded
+    else:
+        raise ValueError(f"Border '{border}' not found in CLS_COLS or REG_COLS.")
 
-        label_encoders[col] = {v: k for k, v in mapping.items()}
-
-    if reg_cols:
-        Y_reg_train = Y_train[reg_cols].copy()
-        Y_reg_val = Y_val[reg_cols].copy()
-
-    return (
-        X_train, Y_cls_train, Y_reg_train,
-        X_val, Y_cls_val, Y_reg_val,
-        label_encoders, cls_cols, reg_cols, pca
-    )
+    return X_train, Y_train, X_val, Y_val
 
 def createTCNDataloaders(X_train, Y_cls_train, Y_reg_train, 
                          X_val, Y_cls_val, Y_reg_val, batch_size, seq_len):
@@ -346,88 +307,47 @@ def createTCNDataloaders(X_train, Y_cls_train, Y_reg_train,
     input_dim = X_train.shape[1]
     return train_loader, val_loader, input_dim
 
-def createDataloadersHybrid(X_train, Y_cls_train, Y_reg_train, 
-                             X_val, Y_cls_val, Y_reg_val, batch_size):
-
+def createDataloadersHybrid(X_train, Y_train, X_val, Y_val, task_type):
     X_tensor_train = torch.tensor(X_train, dtype=torch.float32)
     X_tensor_val = torch.tensor(X_val, dtype=torch.float32)
 
-    if not Y_cls_train.empty:
-        col = Y_cls_train.columns[0]
-        Y_tensor_train = torch.tensor(Y_cls_train[col].values, dtype=torch.long)
-        Y_tensor_val = torch.tensor(Y_cls_val[col].values, dtype=torch.long)
+    if task_type == 'classification':
+        Y_tensor_train = torch.tensor(Y_train.values.squeeze(), dtype=torch.long)
+        Y_tensor_val = torch.tensor(Y_val.values.squeeze(), dtype=torch.long)
+    elif task_type == 'regression':
+        Y_tensor_train = torch.tensor(Y_train.values, dtype=torch.float32)
+        Y_tensor_val = torch.tensor(Y_val.values, dtype=torch.float32)
     else:
-        col = Y_reg_train.columns[0]
-        Y_tensor_train = torch.tensor(Y_reg_train[col].values, dtype=torch.float32).view(-1, 1)
-        Y_tensor_val = torch.tensor(Y_reg_val[col].values, dtype=torch.float32).view(-1, 1)
+        raise ValueError("task_type must be 'classification' or 'regression'")
 
     train_dataset = TensorDataset(X_tensor_train, Y_tensor_train)
     val_dataset = TensorDataset(X_tensor_val, Y_tensor_val)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
 
     return train_loader, val_loader, X_tensor_train.shape[1]
 
-def preprocessFeatures(X_train, X_val, X_test):
+def scaleFeatures(X_train, X_val, X_test):
 
     X_scaler = config.SCALER()
-    X_train_scaled = X_scaler.fit_transform(X_train)
-    X_val_scaled = X_scaler.transform(X_val)
-    X_test_scaled = X_scaler.transform(X_test)
+    X_train = X_scaler.fit_transform(X_train)
+    X_val = X_scaler.transform(X_val)
+    X_test = X_scaler.transform(X_test)
 
     if config.USE_PCA:
         pca = PCA(n_components=config.PCA_COMP)
-        X_train_pca = pca.fit_transform(X_train_scaled)
-        X_val_pca = pca.transform(X_val_scaled)
-        X_test_pca = pca.transform(X_test_scaled)
-        return X_train_pca, X_val_pca, X_test_pca, pca
-    else:
-        return X_train_scaled, X_val_scaled, X_test_scaled, None
+        X_train = pca.fit_transform(X_train)
+        X_val = pca.transform(X_val)
+        X_test = pca.transform(X_test)
+        print(f"PCA {config.PCA_COMP} dims → Explained Variance: {sum(pca.explained_variance_ratio_):.4f}")
+
+    return X_train, X_val, X_test
 
 
 """************************************************************************
             Hybrid model functions
 ************************************************************************"""
-
-def saveClassMappings(Y_train, cls_cols, path):
-    class_mappings = {}
-
-    for col in cls_cols:
-        le = LabelEncoder()
-        le.fit(Y_train[col])
-        mapping = {int(i): str(label) for i, label in enumerate(le.classes_)}
-        class_mappings[col] = mapping
-
-    with open(path, "w") as f:
-        json.dump(class_mappings, f, indent=2)
-
-    print("✅ Saved class mappings to:", path)
-
-def safeLabelEncode(train_col, val_col, fit_on=None, use_fit_on=config.CLASSIFY_WHOLE_DATASET):
-    le = LabelEncoder()
-    
-    if use_fit_on and fit_on is not None:
-        le.fit(fit_on)
-    else:
-        le.fit(train_col)
-
-    train_encoded = le.transform(train_col)
-
-    class_map = {label: i for i, label in enumerate(le.classes_)}
-    val_encoded = val_col.map(class_map).fillna(-1).astype(int)
-
-    return train_encoded, val_encoded, le
-
-def getTargetTypes(Y_train, threshold):
-    target_types = {}
-    for col in Y_train.columns:
-        unique_count = Y_train[col].nunique()
-        if unique_count > threshold:
-            target_types[col] = 'regression'
-        else:
-            target_types[col] = 'classification'
-    return target_types
 
 def getLoader(X):
     X = torch.tensor(X, dtype=torch.float32)
