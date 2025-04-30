@@ -15,13 +15,13 @@ def run():
     if config.DO_TRAIN:
         for model_name in config.MODELS:
             for dataset in config.DATASETS:
-                from utils.train_utils import buildTrainValTestSet
-                _, Y_all, _, _, _, _ = buildTrainValTestSet(dataset, border=None)
+                
                 if model_name in ("Hybrid", "TCN"):
                     from training.train_Hybrid import main as train_main
                 else:
                     from training.train_NN import main as train_main
-                for target_col in Y_all.columns:
+                    
+                for target_col in config.ALL_BORDERS:
                     print(f"\nTraining Model: {model_name} on {dataset} | Target: {target_col}")
                     train_main(dataset, model_name, target_col)
 
