@@ -31,17 +31,18 @@ def main(dataset, model_name, border):
                                                                             PRE-PROCESSING
     ************************************************************************************************************************************************************************************
     """
-
+    border = 'AUS_ITA'
     setSeed()
     print(f"Using device: {config.DEVICE}")
 
     model_path, metrics_path = preparePaths(dataset, model_name, border)
 
-    X_train, Y_cls_train, Y_reg_train, X_val, Y_cls_val, Y_reg_val, label_encs, cls_cols, reg_cols, pca = prepareDataHybrid(dataset, border)
+    X_train, Y_train, X_val, Y_val = prepareDataHybrid(dataset, border)
 
     if border in config.CLS_COLS:
-        out_dim = len(label_encs[border])
-        print(f"No. of classes: {out_dim}")
+        with open(os.path.join(config.PROJECT_ROOT, "mappings", "clsMap.json"), 'r') as f:
+            class_mapping = json.load(f)
+        out_dim = len(class_mapping[border])
         task_type = 'classification'
         criterion = config.CLS_CRITERIA()
     else:
@@ -49,29 +50,28 @@ def main(dataset, model_name, border):
         task_type = 'regression'
         criterion = config.REG_CRITERIA()
 
+    # train_loader, val_loader, input_dim = createDataloadersHybrid(
+    #     X_train, Y_train, X_val, Y_val,
+    #     batch_size=config.BATCH_SIZE,
+    #     task_type=task_type
+    # )
+
     if model_name == 'Hybrid':
-        train_loader, val_loader, input_dim = createDataloadersHybrid(
-            X_train, Y_cls_train, Y_reg_train,
-            X_val, Y_cls_val, Y_reg_val,
-            batch_size=config.BATCH_SIZE
-        )
+        train_loader, val_loader, input_dim = createDataloadersHybrid(X_train, Y_train, X_val, Y_val, task_type=task_type)
         model = Hybrid(input_dim, out_dim, task_type).to(config.DEVICE)
 
-    elif model_name == 'TCN':
-        train_loader, val_loader, input_dim = createTCNDataloaders(
-            X_train, Y_cls_train, Y_reg_train,
-            X_val, Y_cls_val, Y_reg_val,
-            batch_size=config.BATCH_SIZE,
-            seq_len=config.SEQ_LEN
-        )
-        model = TCN(input_dim, out_dim, task_type).to(config.DEVICE)
+    # elif model_name == 'TCN':
+    #     train_loader, val_loader, input_dim = createTCNDataloaders(
+    #         X_train, Y_cls_train, Y_reg_train,
+    #         X_val, Y_cls_val, Y_reg_val,
+    #         batch_size=config.BATCH_SIZE,
+    #         seq_len=config.SEQ_LEN
+    #     )
+    #     model = TCN(input_dim, out_dim, task_type).to(config.DEVICE)
 
     print(f"\nTarget column: {border} ({task_type})")
     print(f"Train/Val Split: {config.TRAIN_SPLIT:.0%}/{config.VALID_SPLIT:.0%}")
     print(f"Batch size: {config.BATCH_SIZE} | LR: {config.LEARNING_RATE} | WD: {config.WEIGHT_DECAY}")
-
-    if config.USE_PCA:
-        print(f"PCA {config.PCA_COMP} dims → Explained Variance: {sum(pca.explained_variance_ratio_):.4f}")
 
     optimizer = config.OPTIMIZER(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
@@ -280,17 +280,17 @@ def main(dataset, model_name, border):
     ************************************************************************************************************************************************************************************
     """
 
-    model_config = {
-        "input_dim": input_dim,
-        "cls_cols": cls_cols,
-        "reg_cols": reg_cols,
-        "hidden_dim": config.HIDDEN_DIM
-    }
-    model_config_path = os.path.join(model_config_path)
-    with open(model_config_path, "w") as f:
-        json.dump(model_config, f, indent=2)
+    # model_config = {
+    #     "input_dim": input_dim,
+    #     "cls_cols": cls_cols,
+    #     "reg_cols": reg_cols,
+    #     "hidden_dim": config.HIDDEN_DIM
+    # }
+    # model_config_path = os.path.join(model_config_path)
+    # with open(model_config_path, "w") as f:
+    #     json.dump(model_config, f, indent=2)
 
-    print("Saved border json config")
+    # print("Saved border json config")
 
     metrics_df = pd.DataFrame({
         'epoch': list(range(1, config.EPOCHS + 1)),
