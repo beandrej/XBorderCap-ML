@@ -9,6 +9,7 @@ __pycache__/
 lit/
 model_params/
 prep_data/
+logdir/
 
 src/training/__pycache__
 src/data/__pycache__
