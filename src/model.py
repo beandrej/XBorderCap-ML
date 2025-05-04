@@ -1,34 +1,39 @@
 import torch
+import config
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch.nn.functional as F
 
+"""
+********************************* BUILDING BLOCKS ******************************************
+"""
+
 class ResidualBlock(nn.Module):
     def __init__(self):
-        from config import SHARED_HIDDEN, DROPOUT, LEAKY_RELU
+        import config
         super().__init__()
         self.block = nn.Sequential(
-            nn.Linear(SHARED_HIDDEN, SHARED_HIDDEN),
-            nn.BatchNorm1d(SHARED_HIDDEN),
-            nn.LeakyReLU(LEAKY_RELU),
-            nn.Dropout(DROPOUT),
-            nn.Linear(SHARED_HIDDEN, SHARED_HIDDEN),
-            nn.BatchNorm1d(SHARED_HIDDEN),
+            nn.Linear(config.SHARED_HIDDEN, config.SHARED_HIDDEN),
+            nn.BatchNorm1d(config.SHARED_HIDDEN),
+            nn.LeakyReLU(config.LEAKY_RELU),
+            nn.Dropout(config.DROPOUT),
+            nn.Linear(config.SHARED_HIDDEN, config.SHARED_HIDDEN),
+            nn.BatchNorm1d(config.SHARED_HIDDEN),
         )
-        self.activation = nn.LeakyReLU(LEAKY_RELU)
+        self.activation = nn.LeakyReLU(config.LEAKY_RELU)
 
     def forward(self, x):
         return self.activation(self.block(x) + x)
 
 class ResidualTCNBlock(nn.Module):
     def __init__(self, dilation):
-        from config import SHARED_HIDDEN, DROPOUT, LEAKY_RELU, KERNEL_SIZE, STRIDE
+        import config
         super().__init__()
-        padding = (KERNEL_SIZE - 1) * dilation
-        self.conv = nn.Conv1d(SHARED_HIDDEN, SHARED_HIDDEN, KERNEL_SIZE, padding=padding, dilation=dilation)
-        self.bn = nn.BatchNorm1d(SHARED_HIDDEN)
-        self.relu = nn.LeakyReLU(LEAKY_RELU)
-        self.dropout = nn.Dropout(DROPOUT)
+        padding = (config.KERNEL_SIZE - 1) * dilation
+        self.conv = nn.Conv1d(config.SHARED_HIDDEN, config.SHARED_HIDDEN, kernel_size=config.KERNEL_SIZE, padding=padding, dilation=dilation)
+        self.bn = nn.BatchNorm1d(config.SHARED_HIDDEN)
+        self.relu = nn.LeakyReLU(config.LEAKY_RELU)
+        self.dropout = nn.Dropout(config.DROPOUT)
 
     def forward(self, x):
         out = self.conv(x)
@@ -37,45 +42,76 @@ class ResidualTCNBlock(nn.Module):
         out = self.relu(out)
         return self.dropout(out + x)
 
+class ResidualTCNBlockStride(nn.Module):
+    def __init__(self):
+        import config
+        super().__init__()
+        self.conv = nn.Conv1d(
+            config.SHARED_HIDDEN, 
+            config.SHARED_HIDDEN, 
+            kernel_size=config.KERNEL_SIZE, 
+            stride=config.KERNEL_SIZE,   
+            padding=0,             
+            dilation=1            
+        )
+        self.bn = nn.BatchNorm1d(config.SHARED_HIDDEN)
+        self.relu = nn.LeakyReLU(config.LEAKY_RELU)
+        self.dropout = nn.Dropout(config.DROPOUT)
+
+    def forward(self, x):
+        out = self.conv(x)
+        out = self.bn(out)
+        out = self.relu(out)
+        stride = self.conv.stride[0]
+        expected_len = out.shape[-1]
+        residual = x[:, :, :expected_len * stride:stride]
+        return self.dropout(out + residual)
+    
 class ResidualTCN(nn.Module):
+
     def __init__(self):
         super().__init__()
-        from config import DILATION
-        layers = []
-        for dilation in DILATION:
-            layers += [ResidualTCNBlock(dilation)]
-        self.network = nn.Sequential(*layers)
-
+        self.network = nn.Sequential(
+            *[ResidualTCNBlock(d) for d in config.DILATION]
+        )
     def forward(self, x):
         return self.network(x)
 
+"""
+********************************* MODELS ******************************************
+"""
+
 class BaseModel(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, task_type='regression'):
         super(BaseModel, self).__init__()
-        
+
+        self.model_type = 'Reg'
+        self.sequence = False
         self.linear = nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
         return self.linear(x)
     
 class Net(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        from config import HIDDEN_DIM, DROPOUT
+    def __init__(self, input_dim, output_dim, task_type='regression'):
+        import config
         super().__init__()
-        self.input_proj = nn.Linear(input_dim, HIDDEN_DIM)
+        self.model_type = 'Reg'
+        self.sequence = False
+        self.input_proj = nn.Linear(input_dim, config.SHARED_HIDDEN)
 
         layers = []
         num_layers = 7
         for i in range(num_layers):
-            layers.append(nn.Linear(HIDDEN_DIM, HIDDEN_DIM))
-            layers.append(nn.LayerNorm(HIDDEN_DIM))
-            layers.append(nn.GELU())
+            layers.append(nn.Linear(config.SHARED_HIDDEN, config.SHARED_HIDDEN))
+            layers.append(nn.LayerNorm(config.SHARED_HIDDEN))
+            layers.append(nn.LeakyReLU(config.LEAKY_RELU))
 
             if i >= num_layers - 2:
-                layers.append(nn.Dropout(DROPOUT))
+                layers.append(nn.Dropout(config.DROPOUT))
 
         self.body = nn.Sequential(*layers)
-        self.output_layer = nn.Linear(HIDDEN_DIM, output_dim)
+        self.output_layer = nn.Linear(config.SHARED_HIDDEN, output_dim)
 
     def forward(self, x):
         x = self.input_proj(x)
@@ -83,50 +119,43 @@ class Net(nn.Module):
         return self.output_layer(x)
 
 class LSTM(nn.Module):
-    def __init__(self, input_dim, output_dim, num_layers=3, bidirectional=True):
-        from config import HIDDEN_DIM, DROPOUT
+    def __init__(self, input_dim, output_dim, task_type='regression', hidden_dim=128, num_layers=2, bidirectional=True):
         super().__init__()
+        self.model_type = 'Reg'
+        self.sequence = True
+
         self.lstm = nn.LSTM(
             input_size=input_dim,
-            hidden_size=HIDDEN_DIM,
+            hidden_size=hidden_dim,
             num_layers=num_layers,
             batch_first=True,
-            dropout=DROPOUT if num_layers > 1 else 0.0,
             bidirectional=bidirectional
         )
-        self.norm = nn.LayerNorm(HIDDEN_DIM * 2)
-        self.fc = nn.Linear(
-            HIDDEN_DIM * (2 if bidirectional else 1),
-            output_dim
-        )
 
-    def forward(self, x, lengths):
-        # x: (B, T, input_dim)
-        packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False)
-        packed_out, _ = self.lstm(packed)
-        out, _ = pad_packed_sequence(packed_out, batch_first=True)
+        direction_factor = 2 if bidirectional else 1
+        self.norm = nn.LayerNorm(hidden_dim * direction_factor)
+        self.fc = nn.Linear(hidden_dim * direction_factor, output_dim)
 
-        # Use mean over time (ignoring padded parts)
-        mask = torch.arange(out.size(1), device=x.device)[None, :] < lengths[:, None]
-        mask = mask.unsqueeze(-1).float()
-        out_avg = (out * mask).sum(dim=1) / lengths.unsqueeze(1)
-        out_avg = self.norm(out_avg)
-
-        return self.fc(out_avg)
-
+    def forward(self, x):
+        out, _ = self.lstm(x)              
+        out = out[:, -1, :]                
+        out = self.norm(out)              
+        return self.fc(out)                
+    
 class Hybrid(nn.Module):
-    def __init__(self, input_dim, out_dim, task_type='classification', n_heads=4):
-        from config import SHARED_HIDDEN, CLS_HIDDEN, REG_HIDDEN, DROPOUT
+    def __init__(self, input_dim, out_dim, task_type, n_heads=4):
+        import config
         super().__init__()
-
+        self.model_type = 'Hybrid'
+        self.sequence = False
         self.task_type = task_type
         self.input_dim = input_dim
-        self.hidden_dim = SHARED_HIDDEN
+        self.hidden_dim = config.SHARED_HIDDEN
 
-        self.input_proj = nn.Linear(input_dim, SHARED_HIDDEN)
+        self.input_proj = nn.Linear(input_dim, config.SHARED_HIDDEN)
 
-        self.attn = nn.MultiheadAttention(embed_dim=SHARED_HIDDEN, num_heads=n_heads, batch_first=True)
-        self.attn_norm = nn.LayerNorm(SHARED_HIDDEN)
+        self.attn = nn.MultiheadAttention(embed_dim=config.SHARED_HIDDEN, num_heads=n_heads, batch_first=True)
+        self.attn_norm = nn.LayerNorm(config.SHARED_HIDDEN)
 
         self.shared = nn.Sequential(
             ResidualBlock(),
@@ -136,24 +165,24 @@ class Hybrid(nn.Module):
 
         # Single regression head
         self.reg_head = nn.Sequential(
-            nn.Linear(SHARED_HIDDEN, REG_HIDDEN),
+            nn.Linear(config.SHARED_HIDDEN, config.REG_HIDDEN),
             nn.ReLU(),
-            nn.Dropout(DROPOUT),
-            nn.Linear(REG_HIDDEN, REG_HIDDEN // 2),
+            nn.Dropout(config.DROPOUT),
+            nn.Linear(config.REG_HIDDEN, config.REG_HIDDEN // 2),
             nn.ReLU(),
-            nn.Dropout(DROPOUT),
-            nn.Linear(REG_HIDDEN // 2, 1)
+            nn.Dropout(config.DROPOUT),
+            nn.Linear(config.REG_HIDDEN // 2, 1)
         )
 
         # Single classification head
         self.cls_head = nn.Sequential(
-            nn.Linear(SHARED_HIDDEN, CLS_HIDDEN),
+            nn.Linear(config.SHARED_HIDDEN, config.CLS_HIDDEN),
             nn.ReLU(),
-            nn.Dropout(DROPOUT),
-            nn.Linear(CLS_HIDDEN, CLS_HIDDEN // 2),
+            nn.Dropout(config.DROPOUT),
+            nn.Linear(config.CLS_HIDDEN, config.CLS_HIDDEN // 2),
             nn.ReLU(),
-            nn.Dropout(DROPOUT),
-            nn.Linear(CLS_HIDDEN // 2, out_dim)
+            nn.Dropout(config.DROPOUT),
+            nn.Linear(config.CLS_HIDDEN // 2, out_dim)
         )
 
     def forward(self, x):  # x: [batch, input_dim]
@@ -171,33 +200,34 @@ class Hybrid(nn.Module):
         else:
             return self.reg_head(x_shared)
 
-class TCN(nn.Module):
+class TCNHybrid(nn.Module):
     def __init__(self, input_dim, out_dim, task_type):
         super().__init__()
-        from config import SHARED_HIDDEN, REG_HIDDEN, LEAKY_RELU, CLS_HIDDEN, DROPOUT
-
+        import config
+        self.model_type = 'Hybrid'
+        self.sequence = True
         self.task_type = task_type
-        self.input_proj = nn.Linear(input_dim, SHARED_HIDDEN)
+        self.input_proj = nn.Linear(input_dim, config.SHARED_HIDDEN)
         self.tcn = ResidualTCN()
 
         self.reg_head = nn.Sequential(
-            nn.Linear(SHARED_HIDDEN, REG_HIDDEN),
-            nn.LeakyReLU(LEAKY_RELU),
-            nn.Dropout(DROPOUT),
-            nn.Linear(REG_HIDDEN, REG_HIDDEN // 2),
-            nn.LeakyReLU(LEAKY_RELU),
-            nn.Dropout(DROPOUT),
-            nn.Linear(REG_HIDDEN // 2, out_dim)
+            nn.Linear(config.SHARED_HIDDEN, config.REG_HIDDEN),
+            nn.LeakyReLU(config.LEAKY_RELU),
+            nn.Dropout(config.DROPOUT),
+            nn.Linear(config.REG_HIDDEN, config.REG_HIDDEN // 2),
+            nn.LeakyReLU(config.LEAKY_RELU),
+            nn.Dropout(config.DROPOUT),
+            nn.Linear(config.REG_HIDDEN // 2, out_dim)
         )
 
         self.cls_head = nn.Sequential(
-            nn.Linear(SHARED_HIDDEN, CLS_HIDDEN),
-            nn.LeakyReLU(LEAKY_RELU),
-            nn.Dropout(DROPOUT),
-            nn.Linear(CLS_HIDDEN, CLS_HIDDEN),
-            nn.LeakyReLU(LEAKY_RELU),
-            nn.Dropout(DROPOUT),
-            nn.Linear(CLS_HIDDEN, out_dim)
+            nn.Linear(config.SHARED_HIDDEN, config.CLS_HIDDEN),
+            nn.LeakyReLU(config.LEAKY_RELU),
+            nn.Dropout(config.DROPOUT),
+            nn.Linear(config.CLS_HIDDEN, config.CLS_HIDDEN),
+            nn.LeakyReLU(config.LEAKY_RELU),
+            nn.Dropout(config.DROPOUT),
+            nn.Linear(config.CLS_HIDDEN, out_dim)
         )
     
     def forward(self, x):      # x: [batch, seq_len, input_dim]
@@ -211,17 +241,35 @@ class TCN(nn.Module):
         else:
             return self.reg_head(x)
 
+"""
+********************************* UTILS ******************************************
+"""
 
-def getModel(model_name, input_dim, output_dim):
+def getModel(model_name, input_dim, output_dim, task_type):
+    model = loadModel(model_name, input_dim, output_dim, task_type)
+
+    if isRegressionOnly(model):
+        print("Model performing regression\n")
+        task_type = 'regression'
+        output_dim = 1
+    else:
+        print("Model with hybrid solver: Regression <-> Classification\n")
+
+    return loadModel(model_name, input_dim, output_dim, task_type), task_type, output_dim
+
+def isRegressionOnly(model):
+    return model.model_type == 'Reg'
+    
+def loadModel(model_name, input_dim, output_dim, task_type):
     if model_name == "BaseModel":
-        return BaseModel(input_dim, output_dim)
+        return BaseModel(input_dim, output_dim, task_type=task_type)
     elif model_name == "Net":
-        return Net(input_dim, output_dim)
+        return Net(input_dim, output_dim, task_type=task_type)
     elif model_name == "LSTM":
-        return LSTM(input_dim, output_dim)
+        return LSTM(input_dim, output_dim, task_type=task_type)
     elif model_name == "Hybrid":
-        return Hybrid(input_dim, output_dim)
-    elif model_name == "TCN":
-        return TCN(input_dim, n_classes=output_dim)
+        return Hybrid(input_dim, output_dim, task_type=task_type)
+    elif model_name == "TCNHybrid":
+        return TCNHybrid(input_dim, output_dim, task_type=task_type)
     else:
         raise ValueError(f"Unknown model: {model_name}")

@@ -26,7 +26,7 @@ def main(dataset, model_name, border):
 
     print(f"Using device: {config.DEVICE}")
     
-    torch_model_path, metrics_path = preparePaths(dataset, model_name, border)
+    data_path, model_path, train_metrics_path, test_metrics_path, pred_path  = preparePaths(dataset, model_name, border)
 
     print(f"Loading data from: {dataset}")
     data = prepareData(dataset, border)

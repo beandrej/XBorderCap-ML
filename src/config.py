@@ -1,7 +1,12 @@
 import os
 import sys; sys.dont_write_bytecode = True
+this_module = sys.modules[__name__]
+import warnings
+warnings.filterwarnings("ignore", message=".*Cannot set number of intraop threads.*")
 import torch
+import pandas as pd
 import torch.nn as nn
+from sklearn.model_selection import ParameterGrid
 from sklearn.preprocessing import MinMaxScaler
 
 
@@ -14,13 +19,19 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SEED = 42
 
-DATASETS = ["FX_NTC_NORM"]   
-MODELS = ["Hybrid"] 
+DATASETS = ["BL_FBMC_NORM"]   
+MODELS = ["TCNHybrid"] 
 
-DO_TRAIN = True
-DO_PREDICT = False
-DO_PLOT = False
+KEEP_BORDER = True
+BORDER_TO_KEEP = 'GER_FRA'
 
+TRAIN = True
+PREDICT = False
+WRITE_METRICS = True
+WRITE_PREDICTIONS = False  
+OVERWRITE_PREDICTIONS = True 
+
+ENABLE_BACKTEST = False
 """
 ******************************** TRAINING *********************************************
 """
@@ -30,48 +41,40 @@ CLS_CRITERIA = nn.CrossEntropyLoss
 SCALER = MinMaxScaler
 OPTIMIZER = torch.optim.AdamW
 
-EPOCHS = 50                     
+EPOCHS = 40                  
 TRAIN_SPLIT = 0.95              # [%] Portion of FULL SET used for training, rest is test
 VALID_SPLIT = 0.20              # [%] Portion of TRAINING SET used for validation
 BATCH_SIZE = 512
 WEIGHT_DECAY = 1e-4
-LEARNING_RATE = 3e-4
+LEARNING_RATE = 3e-3
 DROPOUT = 0.4
-LEAKY_RELU = 0.05
-NUM_WORKERS = 8
+LEAKY_RELU = 0.1
 
-HIDDEN_DIM = 128                # old, for Net & LSTM
-USE_PCA = True                  # True = Use PCA
-PCA_COMP = 64                   # PCA output dimension
-ROLLING_HOURS = []              # Every feature col gets averages for the last X hours -> each hour entry doubles the dataset
-UNIQUE_VAL_TRSH = 200           # Hybrid model threshhold Regression <-> Classification
-
-DILATION = [1] 
-KERNEL_SIZE = 2
-STRIDE = 1
-SEQ_LEN = 4
-           
 SHARED_HIDDEN = 256
-CLS_HIDDEN = 512
+CLS_HIDDEN = 128
 REG_HIDDEN = 256
 
-MIN_EPOCHS_MODEL_SAVE = 15      # Model.pth only saves after min. epochs
+NUM_WORKERS = 8
+SHUFFLE_TRAIN = True
+
+USE_PCA = True                  # True = Use PCA
+PCA_COMP = 64                   # PCA output dimension
+USE_RF = False                  # Aborts training -> ONLY RF for Dataset
+
+DILATION = [1, 8, 24] 
+KERNEL_SIZE = 3
+USE_STRIDE = False
+SEQ_LEN = 50
+           
+MIN_EPOCHS_MODEL_SAVE = 5      # Model.pth only saves after min. epochs
+SAVE_PLOTS = True
+SHOW_PLOTS = False
 
 """
 *************************************************************************************
 """
 
-USE_RF = False                  # Create RF Analysis and plot
-USE_ROLLING_VAL = False         # True = Pick VALID_SPLITS most similar mean/var score to training
-CLASSIFY_WHOLE_DATASET = False  # True = UNIQUE_VAL_TRSH is infinite
-
-SAVE_PLOTS = True               
-MAKE_PLOTS = True
-SHOW_PLOTS = False
-PLOT_LAG_CORR = False
-PLOT_BORDER_SPLIT = False       
-
-PREDICT_ON_FULL_DATA = False
+        
 
 FBMC_BORDERS = [
     "AUS_CZE", "CZE_AUS", "AUS_GER", "GER_AUS", "BEL_FRA", "FRA_BEL", "BEL_GER", "GER_BEL", 
@@ -108,3 +111,30 @@ ALL_BORDERS = [
     'GBR_NET', 'NET_GBR', 'SWI_FRA', 'GBR_FRA', 'SWI_AUS', 'FRA_GBR', 'NO2_NET', 'GER_DK2', 
     'DK1_NET', 'NET_NO2', 'DK2_GER'
 ]
+
+def borderCheck(dataset):
+    if dataset.split('_')[1] == 'FBMC':
+        return FBMC_BORDERS
+    elif dataset.split('_')[1] == 'NTC':
+        return NTC_BORDERS
+
+def run():
+    print(f"\n ------------ TRAINING PIPELINE STARTED ------------ ")
+
+    assert set(ALL_BORDERS) == set(REG_COLS) | set(CLS_COLS), "\n ------- Regression and Cls borders DO NOT match ALL BORDERS! ------- \n"
+    assert set(ALL_BORDERS) == set(FBMC_BORDERS) | set(NTC_BORDERS), "\n ------- FBMC and NTC borders DO NOT match with ALL BORDERS! ------- \n"
+
+    torch.set_num_threads(8)
+    torch.backends.cudnn.benchmark = True
+    from training.train_Hybrid import main as train_main
+
+    for model_name in MODELS:
+        for dataset in DATASETS:
+            for border in borderCheck(dataset):
+                print(f"\n ----------------------------- {model_name} on {dataset} | Target: {border} | Border Type: {dataset.split('_')[1]} ----------------------------- ")
+                train_main(dataset, model_name, border)
+
+
+
+if __name__ == '__main__':
+    run()

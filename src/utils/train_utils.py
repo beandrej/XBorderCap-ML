@@ -16,52 +16,21 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_absolute_error, r2_score
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils.plot_utils import plotLagCorr
 import config
-from model import getModel
 
 """************************************************************************
             Dataset classes for training and testing
 ************************************************************************"""
 
-class SequenceDataset(Dataset):
-    def __init__(self, X, Y, seq_len, min_seq_len=None):
-        assert len(X) == len(Y)
-        self.X = torch.tensor(X, dtype=torch.float32) if not torch.is_tensor(X) else X
-        self.Y = torch.tensor(Y, dtype=torch.float32) if not torch.is_tensor(Y) else Y
-        self.seq_len = seq_len
-        self.min_seq_len = min_seq_len or seq_len
-
-    def __len__(self):
-        return len(self.X) - self.seq_len
-
-    def __getitem__(self, idx):
-        seq_len = self.seq_len
-        if self.min_seq_len < self.seq_len:
-            seq_len = random.randint(self.min_seq_len, self.seq_len)
-
-        x_seq = self.X[idx : idx + seq_len]
-        y_target = self.Y[idx + seq_len]
-        return x_seq, y_target, x_seq.shape[0]
-
-class HybridDataset(Dataset):
-    def __init__(self, X, Y_cls_list, Y_reg_list):
-        self.X = X
-        self.Y_cls_list = Y_cls_list
-        self.Y_reg_list = Y_reg_list
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        cls_targets = [y[idx] for y in self.Y_cls_list]
-        reg_targets = [y[idx] for y in self.Y_reg_list]
-        return self.X[idx], cls_targets, reg_targets
-    
-class TCNDataset(Dataset):
+class SequentialDataset(Dataset):
     def __init__(self, X, Y, seq_len):
-        self.X = torch.tensor(X, dtype=torch.float32)
-        self.Y = torch.tensor(Y, dtype=torch.float32 if Y.ndim == 2 else torch.long)
+        self.X = X.clone().detach().float() if isinstance(X, torch.Tensor) else torch.tensor(X, dtype=torch.float32)
+        if isinstance(Y, torch.Tensor):
+            self.Y = Y.clone().detach()
+        else:
+            self.Y = torch.tensor(Y)
+        
+        self.Y = self.Y.float() if self.Y.ndim == 2 else self.Y.long()
         self.seq_len = seq_len
 
     def __len__(self):
@@ -77,40 +46,29 @@ class TCNDataset(Dataset):
 ************************************************************************"""
 
 def preparePaths(training_set, model_name, border):
+    dataset_type = training_set.split('_')[0]
     border_type = training_set.split('_')[1]
     base_path = config.PROJECT_ROOT
 
-    if model_name == 'TCN':
-        model_base = os.path.join(base_path, f'model_params/{border_type}/{model_name}')
-        metrics_base = os.path.join(base_path, f'src/results/model_metrics/{border_type}/{model_name}')
-
-        model_path = os.path.join(model_base, f"{model_name}_{training_set}_{border}.pth")
-        metrics_path = os.path.join(metrics_base, f"metrics_{model_name}_{training_set}_{border}.csv")
-
-    elif model_name == 'Hybrid':
-        model_base = os.path.join(base_path, f'model_params/{border_type}/{model_name}')
-        model_config_base = os.path.join(base_path, f'model_params/{border_type}/{model_name}/model_config')
-        metrics_base = os.path.join(base_path, f'src/results/model_metrics/{border_type}/{model_name}')  
-
-        model_path = os.path.join(model_base, f'{model_name}_{training_set}_{border}_{config.UNIQUE_VAL_TRSH}.pth')
-        model_config_path = os.path.join(model_config_base, f'params_{model_name}_{training_set}_{border}_{config.UNIQUE_VAL_TRSH}.json')
-        metrics_path = os.path.join(metrics_base, f"metrics_{model_name}_{training_set}_{border}_{config.UNIQUE_VAL_TRSH}.csv")
-        os.makedirs(model_config_base, exist_ok=True)
-
+    if config.ENABLE_BACKTEST:
+        data_path = os.path.join(base_path, "data_cache/backtest", training_set, f"{dataset_type}_{border}.pt")
+        model_path = os.path.join(base_path, f'model_params/BACKTEST/{border_type}/{model_name}', f"{model_name}_{training_set}_{border}.pth")
+        train_metrics_path = os.path.join(base_path, f'src/results/model_metrics/BACKTEST/{border_type}/{model_name}', f"metrics_{model_name}_{training_set}_{border}.csv")
+        test_metrics_path = os.path.join(base_path, f'src/results/test_metrics/BACKTEST/{model_name}', f"test_metrics_{model_name}_{training_set}.csv")
+        pred_path = os.path.join(base_path, f'src/results/predictions_csv/BACKTEST/{model_name}', f"pred_{model_name}_{training_set}.csv")
     else:
-        model_base = os.path.join(base_path, f'model_params/{border_type}/{model_name}')
-        metrics_base = os.path.join(base_path, f'src/results/model_metrics/{border_type}/{model_name}')
+        data_path = os.path.join(base_path, "data_cache", training_set, f"{dataset_type}_{border}.pt")
+        model_path = os.path.join(base_path, f'model_params/{border_type}/{model_name}', f"{model_name}_{training_set}_{border}.pth")
+        train_metrics_path = os.path.join(base_path, f'src/results/model_metrics/{border_type}/{model_name}', f"metrics_{model_name}_{training_set}_{border}.csv")
+        test_metrics_path = os.path.join(base_path, f'src/results/test_metrics/{model_name}', f"test_metrics_{model_name}_{training_set}.csv")
+        pred_path = os.path.join(base_path, f'src/results/predictions_csv/{model_name}', f"pred_{model_name}_{training_set}.csv")
 
-        model_path = os.path.join(model_base, f"{model_name}_{training_set}_{border}.pth")
-        metrics_path = os.path.join(metrics_base, f"metrics_{model_name}_{training_set}_{border}.csv")
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    os.makedirs(os.path.dirname(train_metrics_path), exist_ok=True)
+    os.makedirs(os.path.dirname(test_metrics_path), exist_ok=True)
+    os.makedirs(os.path.dirname(pred_path), exist_ok=True)
 
-    os.makedirs(model_base, exist_ok=True)
-    os.makedirs(metrics_base, exist_ok=True)
-
-    if model_name == 'Hybrid':
-        return model_path, metrics_path
-    else:
-        return model_path, metrics_path
+    return data_path, model_path, train_metrics_path, test_metrics_path, pred_path 
 
 def buildTrainValTestSet(dataset, border):
     
@@ -127,9 +85,11 @@ def buildTrainValTestSet(dataset, border):
     X, related_countries = filterByBorder(X_wo_time, border, X_time, neighbors)
     print(f"Using {len(X.columns)} input columns for countries: {related_countries}")
 
-    X_train, Y_train, X_val, Y_val, X_test, Y_test = trainValTestSplit(X, Y, config.TRAIN_SPLIT, config.VALID_SPLIT)
+    X_train, Y_train, X_val, Y_val, X_test, Y_test = trainValTestSplitBacktest(X, Y)#, config.TRAIN_SPLIT, config.VALID_SPLIT)
 
-    return X_train, Y_train, X_val, Y_val, X_test, Y_test
+    test_timestamps = X_test.index
+
+    return X_train, Y_train, X_val, Y_val, X_test, Y_test, test_timestamps
 
 def splitXY(df: pd.DataFrame, border_type: str):
     if border_type == "FBMC":
@@ -175,6 +135,29 @@ def extractCountryNeighbors(target_columns):
         country_neighbors[c2].add(c1)
     return {country: sorted(list(neighbors)) for country, neighbors in country_neighbors.items()}
 
+def trainValTestSplitBacktest(X, Y):
+    test_start = "2023-07-01 00:00:00"
+    test_end = "2023-12-31 23:00:00"
+
+    X = X.copy()
+    Y = Y.copy()
+    X.index = pd.to_datetime(X.index)
+    Y.index = pd.to_datetime(Y.index)
+
+    X_test = X.loc[test_start:test_end]
+    Y_test = Y.loc[test_start:test_end]
+
+    X_train_full = X.drop(X_test.index)
+    Y_train_full = Y.drop(Y_test.index)
+
+    val_size = int(len(X_train_full) * 0.1)
+    X_train = X_train_full.iloc[:-val_size]
+    Y_train = Y_train_full.iloc[:-val_size]
+    X_val = X_train_full.iloc[-val_size:]
+    Y_val = Y_train_full.iloc[-val_size:]
+
+    return X_train, Y_train, X_val, Y_val, X_test, Y_test
+
 def trainValTestSplit(X, Y, train_frac, val_frac):
     assert 0 < train_frac < 1
     assert 0 <= val_frac < 1
@@ -200,10 +183,10 @@ def trainValTestSplit(X, Y, train_frac, val_frac):
 
     return X_train, Y_train, X_val, Y_val, X_test, Y_test
 
-def prepareModel(model_name, X_train, Y_train, X_val, Y_val):
+def getLoaders(model_name, X_train, Y_train, X_val, Y_val):
     if model_name == "LSTM":
-        train_dataset = SequenceDataset(X_train, Y_train, seq_len=config.SEQ_LEN, min_seq_len=None)
-        val_dataset = SequenceDataset(X_val, Y_val, seq_len=config.SEQ_LEN, min_seq_len=config.SEQ_LEN)
+        train_dataset = SequentialDataset(X_train, Y_train, seq_len=config.SEQ_LEN)
+        val_dataset = SequentialDataset(X_val, Y_val, seq_len=config.SEQ_LEN)
         collate_fn = padCollate
     else:
         train_dataset = TensorDataset(torch.tensor(X_train, dtype=torch.float32),
@@ -223,32 +206,11 @@ def prepareModel(model_name, X_train, Y_train, X_val, Y_val):
         input_dim = sample_X.shape[0]
 
     output_dim = sample_Y.shape[0] if len(sample_Y.shape) > 0 else 1
-    model = getModel(model_name, input_dim, output_dim).to(config.DEVICE)
 
-    return model, train_loader, val_loader   
-
-def prepareData(training_set, border):
-    X_train, Y_train, X_val, Y_val, X_test, Y_test = buildTrainValTestSet(training_set, border)
-
-    if config.USE_RF:
-        RFAnalysis(X_train, Y_train, training_set, border, original_feature_names=X_train.columns.tolist())
-        return None
-
-    X_train, X_val, X_test = scaleFeatures(X_train, X_val, X_test)
-
-    if config.DO_PREDICT and not config.DO_TRAIN:
-        return X_test, Y_test
-
-    if config.PLOT_BORDER_SPLIT:
-        return None
-
-    Y_train = Y_train.to_numpy()
-    Y_val = Y_val.to_numpy()
-
-    return X_train, Y_train, X_val, Y_val
+    return train_loader, val_loader   
 
 def prepareDataHybrid(dataset, border):
-    X_train, Y_train, X_val, Y_val, X_test, Y_test = buildTrainValTestSet(dataset, border)
+    X_train, Y_train, X_val, Y_val, X_test, Y_test, test_timestamps = buildTrainValTestSet(dataset, border)
 
     if config.USE_RF:
         RFAnalysis(X_train, Y_train, dataset, border, original_feature_names=X_train.columns.tolist())
@@ -256,18 +218,6 @@ def prepareDataHybrid(dataset, border):
 
     X_train, X_val, X_test = scaleFeatures(X_train, X_val, X_test)
 
-    # Inference-only mode
-    if config.DO_PREDICT and not config.DO_TRAIN:
-        if border in config.CLS_COLS:
-            classmap_path = os.path.join(config.PROJECT_ROOT, "mappings", "clsMap.json")
-            with open(classmap_path, 'r') as f:
-                class_mapping = json.load(f)
-            mapping = class_mapping[border]
-            encoded_test = Y_test[border].astype(str).map(mapping).astype(int)
-            Y_test = pd.DataFrame({border: encoded_test})
-        return X_test, Y_test
-
-    # Training mode
     if border in config.CLS_COLS:
         classmap_path = os.path.join(config.PROJECT_ROOT, "mappings", "clsMap.json")
         with open(classmap_path, 'r') as f:
@@ -275,39 +225,20 @@ def prepareDataHybrid(dataset, border):
         mapping = class_mapping[border]
 
         Y_train = pd.DataFrame({border: Y_train[border].astype(str).map(mapping).astype(int)})
-        Y_val = pd.DataFrame({border: Y_val[border].astype(str).map(mapping).astype(int)})
+        Y_val   = pd.DataFrame({border: Y_val[border].astype(str).map(mapping).astype(int)})
+        Y_test  = pd.DataFrame({border: Y_test[border].astype(str).map(mapping).astype(int)})
 
     elif border in config.REG_COLS:
         Y_train = Y_train[[border]]
-        Y_val = Y_val[[border]]
+        Y_val   = Y_val[[border]]
+        Y_test  = Y_test[[border]]
 
     else:
         raise ValueError(f"Border '{border}' not found in CLS_COLS or REG_COLS.")
 
-    return X_train, Y_train, X_val, Y_val
+    return X_train, Y_train, X_val, Y_val, X_test, Y_test, test_timestamps
 
-def createTCNDataloaders(X_train, Y_cls_train, Y_reg_train, 
-                         X_val, Y_cls_val, Y_reg_val, batch_size, seq_len):
-
-    if not Y_cls_train.empty:
-        col = Y_cls_train.columns[0]
-        Y_train = Y_cls_train[col].values
-        Y_val = Y_cls_val[col].values
-    else:
-        col = Y_reg_train.columns[0]
-        Y_train = Y_reg_train[col].values
-        Y_val = Y_reg_val[col].values
-
-    train_dataset = TCNDataset(X_train, Y_train, seq_len)
-    val_dataset = TCNDataset(X_val, Y_val, seq_len)
-
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False, num_workers=config.NUM_WORKERS, pin_memory=True, persistent_workers=True, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=config.NUM_WORKERS, pin_memory=True, persistent_workers=True, drop_last=True)
-
-    input_dim = X_train.shape[1]
-    return train_loader, val_loader, input_dim
-
-def createDataloadersHybrid(X_train, Y_train, X_val, Y_val, task_type):
+def getLoadersHybrid(X_train, Y_train, X_val, Y_val, task_type, model):
     X_tensor_train = torch.tensor(X_train, dtype=torch.float32)
     X_tensor_val = torch.tensor(X_val, dtype=torch.float32)
 
@@ -320,13 +251,33 @@ def createDataloadersHybrid(X_train, Y_train, X_val, Y_val, task_type):
     else:
         raise ValueError("task_type must be 'classification' or 'regression'")
 
-    train_dataset = TensorDataset(X_tensor_train, Y_tensor_train)
-    val_dataset = TensorDataset(X_tensor_val, Y_tensor_val)
+    if model.sequence:
+        print("MODEL USING SEQUENCE DATASET")
+        train_dataset = SequentialDataset(X_tensor_train, Y_tensor_train, seq_len=config.SEQ_LEN)
+        val_dataset = SequentialDataset(X_tensor_val, Y_tensor_val, seq_len=config.SEQ_LEN)
+    else:
+        train_dataset = TensorDataset(X_tensor_train, Y_tensor_train)
+        val_dataset = TensorDataset(X_tensor_val, Y_tensor_val)
 
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=config.SHUFFLE_TRAIN, num_workers=config.NUM_WORKERS, pin_memory=True, persistent_workers=True, drop_last=False)
+    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=config.NUM_WORKERS, pin_memory=True, persistent_workers=True, drop_last=False)
 
-    return train_loader, val_loader, X_tensor_train.shape[1]
+    return train_loader, val_loader
+
+def getTestLoader(X_test, Y_test, model):
+    X_tensor = torch.tensor(X_test, dtype=torch.float32)
+    if model.model_type == "Reg":
+        Y_tensor = torch.tensor(Y_test.values, dtype=torch.float32)
+    else:
+        Y_tensor = torch.tensor(Y_test.values.squeeze(), dtype=torch.long)
+
+    if model.sequence:
+        test_dataset = SequentialDataset(X_tensor, Y_tensor, seq_len=config.SEQ_LEN)
+    else:
+        test_dataset = TensorDataset(X_tensor, Y_tensor)
+
+    loader = DataLoader(test_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=config.NUM_WORKERS, pin_memory=True, persistent_workers=True, drop_last=False)
+    return loader
 
 def scaleFeatures(X_train, X_val, X_test):
 
@@ -344,121 +295,56 @@ def scaleFeatures(X_train, X_val, X_test):
 
     return X_train, X_val, X_test
 
+def savePredictions(pred_path, test_timestamps, trues, preds, border, write=True, overwrite=True):
 
-"""************************************************************************
-            Hybrid model functions
-************************************************************************"""
+    min_len = min(len(preds), len(trues), len(test_timestamps))
 
-def getLoader(X):
-    X = torch.tensor(X, dtype=torch.float32)
-    X = DataLoader(TensorDataset(X), batch_size=config.BATCH_SIZE, shuffle=False)
-    return X
+    new_df = pd.DataFrame({
+        "timestamp": test_timestamps[:min_len],
+        "true": trues[:min_len].flatten(),
+        "pred": preds[:min_len].flatten(),
+    })
 
-def loadHybridClassMap(target_col, mapping_path):
-    if not os.path.exists(mapping_path):
-        return {}
-    with open(mapping_path, "r") as f:
-        class_mappings = json.load(f)
-    return class_mappings.get(target_col, {})
+    new_df["timestamp"] = pd.to_datetime(new_df["timestamp"])
 
-def loadHybridModelConfig(config_path):
-    if not os.path.exists(config_path):
-        return None
+    if not write:
+        print(f"\n --- Predictions NOT SAVED for {border}! --- \n")
 
-    with open(config_path, "r") as f:
-        return json.load(f)
+    # If no file found and writing enabled
+    elif not os.path.exists(pred_path) and write:
+        pred_df = new_df
 
-def computeGlobalMAE(reg_preds, reg_trues, cls_preds, cls_trues):
-    mae_list = []
+        pred_df.sort_values("timestamp", inplace=True)
+        os.makedirs(os.path.dirname(pred_path), exist_ok=True)
+        pred_df.to_csv(pred_path, index=False)
+        print(f"\n --- NEW Predictions SAVED for {border}! --- \n")
 
-    # Regression heads
-    if len(reg_preds) > 0:
-        for i in range(reg_preds.shape[1]):
-            mae = mean_absolute_error(reg_trues[:, i], reg_preds[:, i])
-            mae_list.append(mae)
+    # If existing file found predictions assumes to be present -> overwrite column
+    elif os.path.exists(pred_path) and write and overwrite:
+        cols_to_remove = [f"{border}_true", f"{border}_pred"]
+        pred_df = pd.read_csv(pred_path)
+        pred_df = pred_df.drop(columns=[col for col in cols_to_remove if col in pred_df.columns])
 
-    # Classification heads
-    for cp, ct in zip(cls_preds, cls_trues):
-        cp = np.array(cp)
-        ct = np.array(ct)
+        min_len = min(len(pred_df), len(preds), len(trues))
+        pred_df = pred_df.iloc[:min_len].copy()
 
-        # Sanity check
-        if len(cp) == 0 or len(ct) == 0:
-            continue
+        pred_df[f"{border}_pred"] = preds[:min_len].flatten()
+        pred_df[f"{border}_true"] = trues[:min_len].flatten()
+        print(f"\n --- Predictions SAVED: Overwrite = {config.OVERWRITE_PREDICTIONS} for {border}! --- \n")
 
-        min_len = min(len(cp), len(ct))
-        cp = cp[:min_len]
-        ct = ct[:min_len]
+        pred_df.sort_values("timestamp", inplace=True)
+        os.makedirs(os.path.dirname(pred_path), exist_ok=True)
+        pred_df.to_csv(pred_path, index=False)
 
-        mae = mean_absolute_error(ct, cp)
-        mae_list.append(mae)
-
-    return np.mean(mae_list) if mae_list else 0.0
-
-
-"""************************************************************************
-            Prediction functions
-************************************************************************"""
-
-def prepareTestPaths(training_set, model_name, border):
-    base_path = config.PROJECT_ROOT
-    border_type = training_set.split('_')[1]
-
-    if model_name == 'V2':
-        model_path = os.path.join(base_path, f'model_params/{border_type}/{model_name}/SEQ_LEN={config.SEQ_LEN}', f"{model_name}_{training_set}_{border}.pth")
-        pred_path = os.path.join(base_path, f'src/results/predictions_csv/{model_name}/SEQ_LEN={config.SEQ_LEN}', f"pred_{model_name}_{training_set}.csv")
-        metrics_path = os.path.join(base_path, f'src/results/test_metrics/{model_name}/SEQ_LEN={config.SEQ_LEN}', f"test_metrics_{model_name}_{training_set}.csv")
-
-    elif model_name == 'Hybrid':
-        model_path = os.path.join(base_path, f'model_params/{border_type}/{model_name}', f"{model_name}_{training_set}_{border}_{config.UNIQUE_VAL_TRSH}.pth")
-        pred_path = os.path.join(base_path, f'src/results/predictions_csv/{model_name}', f"pred_{model_name}_{training_set}.csv")
-        metrics_path = os.path.join(base_path, f'src/results/test_metrics/{model_name}', f"test_metrics_{model_name}_{training_set}.csv")
-        classmapping_path = os.path.join(base_path, f'model_params/{border_type}/{model_name}/mappings', f'cls_map_{model_name}_{training_set}_{border}_{config.UNIQUE_VAL_TRSH}.json')
-        model_config_path = os.path.join(base_path, f'model_params/{border_type}/{model_name}/model_config', f'params_{model_name}_{training_set}_{border}_{config.UNIQUE_VAL_TRSH}.json')
-        os.makedirs(os.path.dirname(classmapping_path), exist_ok=True)
-        os.makedirs(os.path.dirname(model_config_path), exist_ok=True)
+    # If existing file found but NO overwrite
+    elif os.path.exists(pred_path) and write and not overwrite:
+        print(f"\n --- EXISTING PREDICTIONS FOUND --- Predictions NOT saved for {border}! --- Activate OVERWRITE in config or check existing file.\n")
     else:
-        model_path = os.path.join(base_path, f'model_params/{border_type}/{model_name}', f"{model_name}_{training_set}_{border}.pth")
-        pred_path = os.path.join(base_path, f'src/results/predictions_csv/{model_name}', f"pred_{model_name}_{training_set}.csv")
-        metrics_path = os.path.join(base_path, f'src/results/test_metrics/{model_name}', f"test_metrics_{model_name}_{training_set}.csv")
+        print(f"\n --- Predictions NOT saved for {border}! --- \n")
+        pass
 
-    os.makedirs(os.path.dirname(model_path), exist_ok=True)
-    os.makedirs(os.path.dirname(pred_path), exist_ok=True)
-    os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
+    assert len(preds) == len(trues)
 
-    if model_name == 'Hybrid':
-        return model_path, pred_path, metrics_path, classmapping_path, model_config_path
-    else:
-        return model_path, pred_path, metrics_path
-
-def preprocessTestData(X_test):
-    X_scaler = config.SCALER()
-    X_scaled = X_scaler.fit_transform(X_test)
-
-    if config.USE_PCA:
-        pca = PCA(n_components=config.PCA_COMP)
-        X_scaled = pca.fit_transform(X_scaled)
-
-    return X_scaled
-
-def prepareTestLoader(X_test, model_name):
-    if model_name == "V2":
-        dummy_Y = np.zeros(len(X_test))
-        dataset = SequenceDataset(X_test, dummy_Y, seq_len=config.SEQ_LEN, min_seq_len=config.SEQ_LEN)
-        collate_fn = padCollate
-        sample_X, _, _ = dataset[0]
-        input_dim = sample_X.shape[1]
-    else:
-        if isinstance(X_test, pd.DataFrame):
-            tensor = torch.tensor(X_test.values, dtype=torch.float32)
-        else:
-            tensor = torch.tensor(X_test, dtype=torch.float32)
-        dataset = TensorDataset(tensor)
-        collate_fn = None
-        input_dim = tensor.shape[1]
-
-    loader = DataLoader(dataset, batch_size=config.BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
-    return loader, input_dim
 
 
 """************************************************************************
@@ -571,3 +457,8 @@ def getTimestamps(dataset):
         timestamps = pd.to_datetime(df.index[split_index:])
     return timestamps
 
+def borderCheck(border):
+    if border.split('_')[1] == 'FBMC':
+        return config.FBMC_BORDERS
+    elif border.split('_')[1] == 'NTC':
+        return config.NTC_BORDERS
