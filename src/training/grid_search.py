@@ -24,12 +24,6 @@ if __name__ == "__main__":
     results = []
 
     all_configs = list(ParameterGrid(param_grid))
-    # valid_configs = [cfg for cfg in all_configs if cfg['KERNEL_SIZE'] <= cfg['SEQ_LEN']]
-    # skipped_configs = [cfg for cfg in all_configs if cfg['KERNEL_SIZE'] > cfg['SEQ_LEN']]
-
-    # if skipped_configs:
-    #     print(f"\n⚠ Skipping {len(skipped_configs)} configs where KERNEL_SIZE > SEQ_LEN")
-
 
     for i, params in enumerate(all_configs):
         print(f"\n--- Config {i+1}/{len(all_configs)}: {params}")
