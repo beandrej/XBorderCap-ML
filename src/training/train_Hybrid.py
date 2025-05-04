@@ -31,7 +31,6 @@ def main(dataset, model_name, border):
     # print(f"\n ----------------------------- {model_name} on {dataset} | Target: {target_col} | Border Type: {dataset.split('_')[1]} ----------------------------- ")
     print(f"\n === Grid Search for {model_name} on {dataset} | Target: {border} === ")
     setSeed()
-    border = 'GER_FRA'
     data_path, model_path, train_metrics_path, test_metrics_path, pred_path  = preparePaths(dataset, model_name, border)
 
     if not os.path.exists(data_path):
