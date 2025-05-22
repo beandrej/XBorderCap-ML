@@ -1,5 +1,4 @@
 import torch
-import config
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch.nn.functional as F
@@ -68,12 +67,10 @@ class ResidualTCNBlockStride(nn.Module):
         return self.dropout(out + residual)
     
 class ResidualTCN(nn.Module):
-
     def __init__(self):
         super().__init__()
-        self.network = nn.Sequential(
-            *[ResidualTCNBlock(d) for d in config.DILATION]
-        )
+        self.network = ResidualTCNBlockStride()
+        
     def forward(self, x):
         return self.network(x)
 
