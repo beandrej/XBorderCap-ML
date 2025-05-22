@@ -14,7 +14,7 @@ model_colors = {
     'Net': '#4C72B0',        # Deep Blue
     'BaseModel': '#DD8452',  # Soft Orange
     'LSTM': '#55A868',       # Teal Green
-    'Hybrid': '#C44E52'      # Rich Red
+    'Hybrid': "#C44E52FF"      # Rich Red
 }
 
 def mergeModelPred(dataset):
@@ -42,10 +42,11 @@ def mergeModelPred(dataset):
 def predictionCompareModel(dataset, border, figsize=(12, 5)):
 
     model_colors = {
-    'Net': '#69b3a2',
-    'BaseModel': '#e79675',
-    'LSTM': '#8da0cb',
-    'Hybrid': '#e78ac3'
+        'Net': '#69b3a2',
+        'BaseModel': '#e79675',
+        'LSTM': '#8da0cb',
+        'Hybrid': '#e78ac3',
+        'TCN': '#a6d854'
     }
 
     fig_base_path = os.path.join(config.PROJECT_ROOT, f'src/results/plots/pred/model_comparison/{dataset}')
@@ -60,6 +61,7 @@ def predictionCompareModel(dataset, border, figsize=(12, 5)):
     plt.plot(df.index, df[f'{border}_pred_BaseModel'], label='BaseModel', linestyle='-.', color=model_colors['BaseModel'], alpha=1)
     plt.plot(df.index, df[f'{border}_pred_LSTM'], label='LSTM', linestyle='-.', color=model_colors['LSTM'], alpha=1)
     plt.plot(df.index, df[f'{border}_pred_Hybrid'], label='Hybrid', linestyle='-.', color=model_colors['Hybrid'], alpha=1)
+    plt.plot(df.index, df[f'{border}_pred_TCNHybrid'], label='TCN', linestyle='-.', color=model_colors['TCN'], alpha=1)
     plt.title(f"Actual vs Predicted Capacity {dataset} - {border}")
     plt.xlabel("Timestamp")
     plt.ylabel("Normalized Capacity")
@@ -118,26 +120,28 @@ def predictionCompareFXandBL(border_type, model, border, figsize=(12, 5)):
 
 
 
-def plotR2MaeOverEpochs(df, title=None, figsize=(12, 5)):
-    fig, axs = plt.subplots(1, 2, figsize=figsize)
+def plotR2OverEpochs(df, title=None, figsize=(12, 5)):
+    plt.figure(figsize=figsize)
+    plt.plot(df['epoch'], df['train_r2'], label='Train R²')
+    plt.plot(df['epoch'], df['val_r2'], label='Val R²')
+    plt.xlabel('Epoch')
+    plt.ylabel('R² Score')
+    plt.title(title if title else 'R² Over Epochs')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
-    axs[0].plot(df['epoch'], df['train_r2'], label='Train R²')
-    axs[0].plot(df['epoch'], df['val_r2'], label='Val R²')
-    axs[0].set_title('R² Over Epochs')
-    axs[0].set_xlabel('Epoch')
-    axs[0].set_ylabel('R² Score')
-    axs[0].legend()
-    axs[0].grid(True)
-
-    axs[1].plot(df['epoch'], df['train_global_mae'], label='Train MAE')
-    axs[1].plot(df['epoch'], df['val_global_mae'], label='Val MAE')
-    axs[1].set_title('MAE Over Epochs')
-    axs[1].set_xlabel('Epoch')
-    axs[1].set_ylabel('MAE')
-    axs[1].legend()
-    axs[1].grid(True)
-
-    plt.suptitle(title or "Training Progress")
+def plotMaeOverEpochs(df, title=None, figsize=(12, 6)):
+    df = df[df['epoch'] <= 40]  # filter up to epoch 40
+    plt.figure(figsize=figsize)
+    plt.plot(df['epoch'], df['train_mae'], label='Train MAE')
+    plt.plot(df['epoch'], df['val_mae'], label='Val MAE')
+    plt.xlabel('Epoch')
+    plt.ylabel('MAE')
+    plt.title(title if title else 'MAE Over Epochs')
+    plt.legend()
+    plt.grid(True)
     plt.tight_layout()
     plt.show()
 
@@ -297,11 +301,13 @@ def mergeTestMetricsCompareModels(dataset):
     bl_path = os.path.join(config.PROJECT_ROOT, f'src/results/test_metrics/BaseModel', f'test_metrics_BaseModel_{dataset}.csv')
     lstm_path = os.path.join(config.PROJECT_ROOT, f'src/results/test_metrics/LSTM', f'test_metrics_LSTM_{dataset}.csv')
     hybrid_path = os.path.join(config.PROJECT_ROOT, f'src/results/test_metrics/Hybrid', f'test_metrics_Hybrid_{dataset}.csv')
+    tcn_path = os.path.join(config.PROJECT_ROOT, f'src/results/test_metrics/TCNHybrid', f'test_metrics_TCNHybrid_{dataset}.csv')
 
     net_df = loadAndRename(net_path, '_Net')
     bl_df = loadAndRename(bl_path, '_BaseModel')
     lstm_df = loadAndRename(lstm_path, '_LSTM')
     hybrid_df = loadAndRename(hybrid_path, '_Hybrid')
+    tcn_df = loadAndRename(hybrid_path, '_TCNHybrid')
 
     merged_df = net_df.merge(bl_df, on='border') \
                   .merge(lstm_df, on='border') \
@@ -497,21 +503,49 @@ def barAvgR2(dataset, clip_min=-1, clip_max=1, figsize=(12,8)):
     else:
         plt.close()
 
-def plotHybridAccuracyBar(dataset):
-    hybrid_path = os.path.join(config.PROJECT_ROOT, f'src/results/test_metrics/Hybrid', f'test_metrics_Hybrid_{dataset}.csv')   
+def plotHybridMAEBar(dataset):
+    model = 'Hybrid'
+    hybrid_path = os.path.join(config.PROJECT_ROOT, f'src/results/test_metrics/BACKTEST/{model}', f'test_metrics_{model}_{dataset}.csv')   
     df = pd.read_csv(hybrid_path)
-    # Filter to only classification rows (r2 == 0.0)
-    df = df[df['r2'] == 0.0]
-    """
-    Plots accuracy values for each border using a horizontal bar plot.
-    df: DataFrame with 'border' and 'accuracy' columns
-    """
-    df_sorted = df.sort_values(by='accuracy', ascending=True)
+    df_sorted = df.sort_values(by='test_mae', ascending=True)
 
     plt.figure(figsize=(14, 10))
-    ax = sns.barplot(data=df_sorted, x='accuracy', y='border', palette='viridis')
+    ax = sns.barplot(data=df_sorted, x='test_mae', y='border', palette='viridis')
 
-    plt.title(f"Hybrid Model Accuracy per Border - {dataset}", fontsize=16, weight='bold')
+    plt.title(f"{model} Model MAE per Border - {dataset}", fontsize=16, weight='bold')
+    plt.xlabel('MAE', fontsize=14)
+    plt.ylabel('Border', fontsize=13)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=11)
+    plt.grid(axis='x', linestyle='--', alpha=0.4)
+
+    for i, (acc, border) in enumerate(zip(df_sorted['test_mae'], df_sorted['border'])):
+        plt.text(acc + 0.001, i, f"{acc:.2f}", va='center', fontsize=10)
+
+    fig_base_path = os.path.join(config.PROJECT_ROOT, f'src/results/plots/{model}/MAE')
+    os.makedirs(fig_base_path, exist_ok=True)
+    fig_path = os.path.join(fig_base_path, f'BACKTEST_{model}_{dataset}_MAE.png')
+
+    plt.tight_layout()
+    if config.SAVE_PLOTS:
+        plt.savefig(fig_path)
+    if config.SHOW_PLOTS: 
+        plt.show()
+    else:
+        plt.close()
+
+def plotHybridAccuracyBar(dataset):
+    model = 'Hybrid'
+    hybrid_path = os.path.join(config.PROJECT_ROOT, f'src/results/test_metrics/{model}', f'test_metrics_{model}_{dataset}.csv')   
+    df = pd.read_csv(hybrid_path)
+    # Filter to only classification rows (r2 == 0.0)
+    df = df[df['test_r2'] == 0.0]
+    df_sorted = df.sort_values(by='test_acc', ascending=True)
+
+    plt.figure(figsize=(14, 10))
+    ax = sns.barplot(data=df_sorted, x='test_acc', y='border', palette='viridis')
+
+    plt.title(f"{model} Model Accuracy per Border - {dataset}", fontsize=16, weight='bold')
     plt.xlabel('Accuracy', fontsize=14)
     plt.ylabel('Border', fontsize=13)
     plt.xticks(fontsize=12)
@@ -519,35 +553,45 @@ def plotHybridAccuracyBar(dataset):
     plt.grid(axis='x', linestyle='--', alpha=0.4)
 
     # Optionally annotate bars
-    for i, (acc, border) in enumerate(zip(df_sorted['accuracy'], df_sorted['border'])):
+    for i, (acc, border) in enumerate(zip(df_sorted['test_acc'], df_sorted['border'])):
         plt.text(acc + 0.01, i, f"{acc:.2f}", va='center', fontsize=10)
 
+    fig_base_path = os.path.join(config.PROJECT_ROOT, f'src/results/plots/{model}/clsAcc')
+    os.makedirs(fig_base_path, exist_ok=True)
+    fig_path = os.path.join(fig_base_path, f'{model}_{dataset}_clsAcc.png')
+
     plt.tight_layout()
-    plt.show()
+    plt.tight_layout()
+    if config.SAVE_PLOTS:
+        plt.savefig(fig_path)
+    if config.SHOW_PLOTS: 
+        plt.show()
+    else:
+        plt.close()
 
 def plotHybridR2Bar(dataset):
-    hybrid_path = os.path.join(config.PROJECT_ROOT, f'src/results/test_metrics/Hybrid', f'test_metrics_Hybrid_{dataset}.csv')   
+    model = 'Hybrid'
+    hybrid_path = os.path.join(config.PROJECT_ROOT, f'src/results/test_metrics/BACKTEST/{model}', f'test_metrics_{model}_{dataset}.csv')   
     df = pd.read_csv(hybrid_path)
 
-    fig_base_path = os.path.join(config.PROJECT_ROOT, f'src/results/plots/Hybrid/R2')
+    fig_base_path = os.path.join(config.PROJECT_ROOT, f'src/results/plots/{model}/R2')
     os.makedirs(fig_base_path, exist_ok=True)
-    fig_path = os.path.join(fig_base_path, f'{dataset}_R2.png')
+    fig_path = os.path.join(fig_base_path, f'BACKTEST_{model}_{dataset}_R2.png')
 
-    df = df[df['r2'] != 0.0]
-    df_sorted = df.sort_values(by='r2', ascending=True)
+    df = df[df['test_r2'] != 0.0]
+    df_sorted = df.sort_values(by='test_r2', ascending=True)
 
     plt.figure(figsize=(10, max(6, len(df_sorted) * 0.3)))
-    ax = sns.barplot(data=df_sorted, x='r2', y='border', palette='viridis')
+    ax = sns.barplot(data=df_sorted, x='test_r2', y='border', palette='viridis')
 
-    plt.title(f'Hybrid Model R² per Border - {dataset}', fontsize=16, weight='bold')
+    plt.title(f'{model} Model R² per Border - {dataset}', fontsize=16, weight='bold')
     plt.xlabel('R² Score', fontsize=14)
-    plt.ylabel('Border', fontsize=13)
     plt.xticks(fontsize=12)
     plt.yticks(fontsize=11)
     plt.grid(axis='x', linestyle='--', alpha=0.4)
     
     
-    for i, (r2, border) in enumerate(zip(df_sorted['r2'], df_sorted['border'])):
+    for i, (r2, border) in enumerate(zip(df_sorted['test_r2'], df_sorted['border'])):
         offset = -0.05 if r2 >= 0 else 0.05  # opposite side of bar
         ha = 'right' if r2 >= 0 else 'left'
         plt.text(offset, i, f"{r2:.2f}", va='center', ha=ha, fontsize=11)
