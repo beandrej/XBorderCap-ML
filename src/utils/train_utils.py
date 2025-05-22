@@ -301,8 +301,8 @@ def savePredictions(pred_path, test_timestamps, trues, preds, border, write=True
 
     new_df = pd.DataFrame({
         "timestamp": test_timestamps[:min_len],
-        "true": trues[:min_len].flatten(),
-        "pred": preds[:min_len].flatten(),
+        f"{border}_true": trues[:min_len].flatten(),
+        f"{border}_pred": preds[:min_len].flatten(),
     })
 
     new_df["timestamp"] = pd.to_datetime(new_df["timestamp"])
