@@ -19,19 +19,19 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SEED = 42
 
-DATASETS = ["BL_FBMC_NORM"]   
+DATASETS = ["BL_FBMC_NORM", "BL_NTC_NORM", "FX_NTC_NORM", "FX_FBMC_NORM"]   
 MODELS = ["TCNHybrid"] 
 
-KEEP_BORDER = True
+KEEP_BORDER = False
 BORDER_TO_KEEP = 'GER_FRA'
 
 TRAIN = True
-PREDICT = False
+PREDICT = True
 WRITE_METRICS = True
-WRITE_PREDICTIONS = False  
+WRITE_PREDICTIONS = True  
 OVERWRITE_PREDICTIONS = True 
 
-ENABLE_BACKTEST = False
+ENABLE_BACKTEST = True
 """
 ******************************** TRAINING *********************************************
 """
@@ -41,18 +41,18 @@ CLS_CRITERIA = nn.CrossEntropyLoss
 SCALER = MinMaxScaler
 OPTIMIZER = torch.optim.AdamW
 
-EPOCHS = 40                  
+EPOCHS = 50                 
 TRAIN_SPLIT = 0.95              # [%] Portion of FULL SET used for training, rest is test
 VALID_SPLIT = 0.20              # [%] Portion of TRAINING SET used for validation
-BATCH_SIZE = 512
+BATCH_SIZE = 32
 WEIGHT_DECAY = 1e-4
-LEARNING_RATE = 3e-3
+LEARNING_RATE = 3e-4
 DROPOUT = 0.4
-LEAKY_RELU = 0.1
+LEAKY_RELU = 0.05
 
 SHARED_HIDDEN = 256
-CLS_HIDDEN = 128
-REG_HIDDEN = 256
+CLS_HIDDEN = 256
+REG_HIDDEN = 128
 
 NUM_WORKERS = 8
 SHUFFLE_TRAIN = True
@@ -61,12 +61,11 @@ USE_PCA = True                  # True = Use PCA
 PCA_COMP = 64                   # PCA output dimension
 USE_RF = False                  # Aborts training -> ONLY RF for Dataset
 
-DILATION = [1, 8, 24] 
-KERNEL_SIZE = 3
-USE_STRIDE = False
-SEQ_LEN = 50
+DILATION = [2, 8, 12, 24] 
+KERNEL_SIZE = 8
+SEQ_LEN = 48
            
-MIN_EPOCHS_MODEL_SAVE = 5      # Model.pth only saves after min. epochs
+MIN_EPOCHS_MODEL_SAVE = 10      # Model.pth only saves after min. epochs
 SAVE_PLOTS = True
 SHOW_PLOTS = False
 
