@@ -31,7 +31,7 @@ WRITE_METRICS = True
 WRITE_PREDICTIONS = True  
 OVERWRITE_PREDICTIONS = True 
 
-ENABLE_BACKTEST = True
+ENABLE_BACKTEST = False
 """
 ******************************** TRAINING *********************************************
 """
@@ -61,11 +61,11 @@ USE_PCA = True                  # True = Use PCA
 PCA_COMP = 64                   # PCA output dimension
 USE_RF = False                  # Aborts training -> ONLY RF for Dataset
 
-DILATION = [2, 8, 12, 24] 
-KERNEL_SIZE = 8
-SEQ_LEN = 48
+DILATION = [2, 8, 12, 24]       # For TCN if dilation is used
+KERNEL_SIZE = 8                 # Kernel size TCN
+SEQ_LEN = 48                    # Sequence length for LSTM, TCN (3D-Input models)
            
-MIN_EPOCHS_MODEL_SAVE = 10      # Model.pth only saves after min. epochs
+MIN_EPOCHS_MODEL_SAVE = 10      # model.pth only saves after min. epochs
 SAVE_PLOTS = True
 SHOW_PLOTS = False
 
