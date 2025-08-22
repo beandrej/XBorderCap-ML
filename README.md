@@ -13,10 +13,6 @@ Predicting **cross‑border transmission capacities** in the European electricit
   - **BL (baseline)** — only inputs compatible with price‑model assumptions (no leakage).
   - **FX (feature‑extended)** — adds past‑day and past‑week averages of prices & capacities.
 - **Neighbor filtering + PCA**: Keep only features from countries adjacent to the two border countries; reduce dimensionality to 64 while retaining >93% variance.
-
-<img width="425" height="296" alt="Bildschirmfoto 2025-08-22 um 16 12 44" src="https://github.com/user-attachments/assets/280b6f16-f155-42bc-837a-8af866c845fb" />
-
-
 - **Scaling**: Feature MinMax scaling; **“max‑so‑far” normalization** for targets to handle upward capacity shifts after upgrades.
 - **Hybrid model**: Residual blocks; **classification for discrete NTC borders**, regression otherwise.
 
@@ -81,6 +77,10 @@ All inputs are **publicly available** (ENTSO‑E, NordPool, ELEXON, NASA MERRA�
 - Prices (hourly DA prices per bidding zone)
 
 Two dataset flavors are built for each border (**BL** and **FX**) and for each regime (**NTC / FBMC**).
+
+
+<img width="600" height="400" alt="Bildschirmfoto 2025-08-22 um 16 12 44" src="https://github.com/user-attachments/assets/280b6f16-f155-42bc-837a-8af866c845fb" />
+
 
 ---
 
