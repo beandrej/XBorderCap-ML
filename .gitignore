@@ -4,6 +4,7 @@ __pycache__/
 *.pyd
 *.csv
 *.txt
+.DS_Store
 
 01_data/
 lit/
